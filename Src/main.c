@@ -118,40 +118,7 @@ int main(void)
   MX_RTC_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
-  printf("\r\n========================================\r\n");
-  printf("STM32WB55 BLE Gateway Starting...\r\n");
-  printf("FUS: v2.2.0 | Stack: v1.24.0.3\r\n");
-  printf("========================================\r\n");
-  
-  // CRITICAL: Force enable C2BOOT and reset CPU2 bootloader
-  printf("Resetting CPU2 bootloader state...\r\n");
-  
-  // Step 1: Force IPCC reset to clear any pending flags
-  LL_AHB3_GRP1_EnableClock(LL_AHB3_GRP1_PERIPH_IPCC);
-  HAL_Delay(1);
-  
-  // Step 2: Enable C2BOOT bit persistently
-  printf("Enabling C2BOOT register...\r\n");
-  HAL_PWR_EnableBkUpAccess();
-  PWR->CR4 |= PWR_CR4_C2BOOT;
-  HAL_PWR_DisableBkUpAccess();
-  
-  // Step 3: Verify C2BOOT was set
-  HAL_Delay(5);
-  printf("PWR_CR4: 0x%08lX\r\n", PWR->CR4);
-  printf("C2BOOT Status: %s\r\n", (PWR->CR4 & PWR_CR4_C2BOOT) ? "SET" : "CLEAR");
-  
-  if((PWR->CR4 & PWR_CR4_C2BOOT) == 0) {
-    printf("ERROR: C2BOOT failed to set! Retrying with stronger method...\r\n");
-    HAL_PWR_EnableBkUpAccess();
-    // Force write twice
-    PWR->CR4 |= PWR_CR4_C2BOOT;
-    PWR->CR4 |= PWR_CR4_C2BOOT;
-    HAL_PWR_DisableBkUpAccess();
-    HAL_Delay(10);
-  }
-  
-  printf("\r\nInitializing BLE Stack...\r\n");
+  printf("**** STM32WB55 BLE V2 Board ****\r\n");
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */

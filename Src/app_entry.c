@@ -487,6 +487,8 @@ static void APPE_SysEvtReadyProcessing(void * pPayload)
   }
   else if (p_sys_ready_event->sysevt_ready_rsp == FUS_FW_RUNNING)
   {
+    // Start C2 FUS Firmware here (this firmware on Core M0+ dont start automatically)
+    SHCI_C2_FUS_StartWs();
     /**
     * The FUS firmware is running on the CPU2
     * In the scope of this application, there should be no case when we get here
