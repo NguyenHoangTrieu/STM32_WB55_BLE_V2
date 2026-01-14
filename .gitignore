@@ -1,0 +1,37 @@
+# Build directories
+build/
+Debug/
+Release/
+*.elf
+*.hex
+*.bin
+*.o
+*.d
+
+# IDE and editor files
+.vscode/
+.cproject
+.project
+.settings/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# STM32CubeIDE specific
+.mxproject
+*.ioc.bak
+
+# Compilation output
+*.a
+*.lib
+*.so
+*.exe
+
+# Dependencies
+*.dep
+
+# OS specific
+Thumbs.db
+.Thumbs.db
