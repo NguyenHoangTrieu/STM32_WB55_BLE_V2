@@ -125,21 +125,24 @@ int main(void)
   MX_APPE_Init();
 
   /* Initialize leds */
-  BSP_LED_Init(LED_BLUE);
-  BSP_LED_Init(LED_GREEN);
-  BSP_LED_Init(LED_RED);
+  // BSP_LED_Init(LED_BLUE);
+  // BSP_LED_Init(LED_GREEN);
+  // BSP_LED_Init(LED_RED);
 
   /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_SW1, BUTTON_MODE_EXTI);
-  BSP_PB_Init(BUTTON_SW2, BUTTON_MODE_EXTI);
-  BSP_PB_Init(BUTTON_SW3, BUTTON_MODE_EXTI);
+  // BSP_PB_Init(BUTTON_SW1, BUTTON_MODE_EXTI);
+  // BSP_PB_Init(BUTTON_SW2, BUTTON_MODE_EXTI);
+  // BSP_PB_Init(BUTTON_SW3, BUTTON_MODE_EXTI);
 
   /* USER CODE BEGIN BSP */
 
   /* -- Sample board code to switch on leds ---- */
-  BSP_LED_On(LED_BLUE);
-  BSP_LED_On(LED_GREEN);
-  BSP_LED_On(LED_RED);
+  // BSP_LED_On(LED_BLUE);
+  // BSP_LED_On(LED_GREEN);
+  // BSP_LED_On(LED_RED);
+  HAL_GPIO_WritePin(GPIOB, LED_R_Pin, GPIO_PIN_SET); // LED RED
+  HAL_GPIO_WritePin(GPIOB, LED_G_Pin, GPIO_PIN_SET); // LED GREEN
+  HAL_GPIO_WritePin(GPIOB, LED_Y_Pin, GPIO_PIN_SET); // LED YELLOW
   printf("All Leds On\r\n");
   /* USER CODE END BSP */
 
@@ -149,13 +152,16 @@ int main(void)
   {
 
     /* -- Sample board code for User push-button in interrupt mode ---- */
-    BSP_LED_Toggle(LED_BLUE);
+    // BSP_LED_Toggle(LED_BLUE);
+    HAL_GPIO_TogglePin(GPIOB, LED_Y_Pin);
     HAL_Delay(delay);
 
-    BSP_LED_Toggle(LED_GREEN);
+    // BSP_LED_Toggle(LED_GREEN);
+    HAL_GPIO_TogglePin(GPIOB, LED_G_Pin);
     HAL_Delay(delay);
 
-    BSP_LED_Toggle(LED_RED);
+    // BSP_LED_Toggle(LED_RED);
+    HAL_GPIO_TogglePin(GPIOB, LED_R_Pin);
     HAL_Delay(delay);
 
     /* USER CODE END WHILE */
@@ -175,11 +181,6 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure LSE Drive Capability
-  */
-  HAL_PWR_EnableBkUpAccess();
-  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_MEDIUMHIGH);
-
   /** Configure the main internal regulator output voltage
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
@@ -188,10 +189,8 @@ void SystemClock_Config(void)
   * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI1
-                              |RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE
-                              |RCC_OSCILLATORTYPE_MSI;
+                              |RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -424,25 +423,24 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_1, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED_R_Pin|LED_G_Pin|LED_Y_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PB0 PB1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+  /*Configure GPIO pins : LED_R_Pin LED_G_Pin LED_Y_Pin */
+  GPIO_InitStruct.Pin = LED_R_Pin|LED_G_Pin|LED_Y_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : USR_BUTTON_1_Pin */
+  GPIO_InitStruct.Pin = USR_BUTTON_1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(USR_BUTTON_1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USB_DM_Pin USB_DP_Pin */
   GPIO_InitStruct.Pin = USB_DM_Pin|USB_DP_Pin;
@@ -451,12 +449,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF10_USB;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PD0 PD1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
