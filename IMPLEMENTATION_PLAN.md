@@ -1,7 +1,49 @@
 # STM32WB BLE Gateway - Thực hiện (Implementation Plan)
 
-## Ngày tạo: 13/01/2025
+## Ngày tạo: 13/01/2025 | Cập nhật: 16/01/2026
 **Mục tiêu**: Xây dựng Gateway trung tâm (Hub) quản lý nhiều thiết bị BLE thông qua lệnh AT
+
+---
+
+## 🔧 KIẾN TRÚC HỆ THỐNG
+
+### Communication Channels:
+- **LPUART1** (921600 baud): AT Command interface (RX/TX data only)
+- **USB CDC**: Debug output via `printf()` - NO AT COMMANDS
+- **BLE Stack**: Multi-device GATT Client operations
+
+### Folder Structure:
+```
+STM32_WB55_BLE_V2/
+├── App/
+│   └── BLE_Gateway/          [NEW - All custom modules here]
+│       ├── Inc/
+│       │   ├── at_command.h
+│       │   ├── ble_device_manager.h
+│       │   ├── ble_connection.h
+│       │   ├── ble_gatt_client.h
+│       │   ├── ble_event_handler.h
+│       │   ├── circular_buffer.h
+│       │   └── debug_trace.h
+│       └── Src/
+│           ├── at_command.c
+│           ├── ble_device_manager.c
+│           ├── ble_connection.c
+│           ├── ble_gatt_client.c
+│           ├── ble_event_handler.c
+│           ├── circular_buffer.c
+│           └── debug_trace.c
+├── Inc/                       [STM32CubeMX generated]
+│   ├── app_ble.h
+│   ├── p2p_client_app.h
+│   └── main.h
+├── Src/                       [STM32CubeMX generated]
+│   ├── app_ble.c              [MODIFIED - integrate Gateway modules]
+│   ├── p2p_client_app.c       [MODIFIED - scan callback]
+│   ├── main.c                 [MODIFIED - USB CDC printf]
+│   └── usbd_cdc_if.c          [MODIFIED - CDC data callback]
+└── CMakeLists.txt             [MODIFIED - add App/BLE_Gateway sources]
+```
 
 ---
 
@@ -143,7 +185,9 @@ P2PC_APP_Opcode_Notification_evt_t {
 ### **TIER 1: CRITICAL (Phải làm ngay)**
 
 #### 1.1 UART AT Command Parser Module
-**File**: `Inc/at_command.h` + `Src/at_command.c`
+**File**: `App/BLE_Gateway/Inc/at_command.h` + `App/BLE_Gateway/Src/at_command.c`
+
+**CRITICAL**: UART chỉ dùng cho AT command, KHÔNG dùng printf!
 
 **API cần:**
 ```c
@@ -161,21 +205,22 @@ int AT_READ_Handler(uint8_t conn_idx, uint16_t handle);  // AT+READ=<idx>,<handl
 int AT_WRITE_Handler(uint8_t conn_idx, uint16_t handle, const uint8_t *data); // AT+WRITE=<idx>,<handle>,<data>
 int AT_NOTIFY_Handler(uint8_t conn_idx, uint16_t handle, uint8_t enable); // AT+NOTIFY=<idx>,<handle>,<en>
 
-// UART callback
+// UART TX only for responses (NO printf here!)
+void UART_SendATResponse(const char *fmt, ...);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
-void UART_PrintResponse(const char *fmt, ...);
 ```
 
 **Chức năng:**
-- Parse chuỗi AT command từ UART
+- Parse chuỗi AT command từ LPUART1
 - Validate syntax
-- Trả về OK/ERROR
+- Trả về OK/ERROR qua UART TX
 - Sử dụng circular buffer cho UART RX
+- **KHÔNG** sử dụng printf (chỉ dùng HAL_UART_Transmit)
 
 ---
 
 #### 1.2 BLE Device Manager Module
-**File**: `Inc/ble_device_manager.h` + `Src/ble_device_manager.c`
+**File**: `App/BLE_Gateway/Inc/ble_device_manager.h` + `App/BLE_Gateway/Src/ble_device_manager.c`
 
 **Cấu trúc dữ liệu:**
 ```c
@@ -244,7 +289,7 @@ void hci_le_advertising_report_event(uint8_t Num_Reports,
 ---
 
 #### 1.4 Multi-Device Connection Manager
-**File**: `Inc/ble_connection.h` + `Src/ble_connection.c`
+**File**: `App/BLE_Gateway/Inc/ble_connection.h` + `App/BLE_Gateway/Src/ble_connection.c`
 
 **Chức năng:**
 ```c
@@ -267,7 +312,7 @@ BLE_ConnectionState_t BLE_Connection_GetState(uint16_t conn_handle);
 ---
 
 #### 1.5 GATT Client Discovery & R/W
-**File**: `Inc/ble_gatt_client.h` + `Src/ble_gatt_client.c`
+**File**: `App/BLE_Gateway/Inc/ble_gatt_client.h` + `App/BLE_Gateway/Src/ble_gatt_client.c`
 
 **Cấu trúc:**
 ```c
@@ -308,7 +353,7 @@ int BLE_GATT_DisableNotification(uint16_t conn_handle, uint16_t desc_handle);
 ### **TIER 2: HIGH PRIORITY (Nên làm)**
 
 #### 2.1 BLE Event Dispatcher
-**File**: `Inc/ble_event_handler.h` + `Src/ble_event_handler.c`
+**File**: `App/BLE_Gateway/Inc/ble_event_handler.h` + `App/BLE_Gateway/Src/ble_event_handler.c`
 
 **Mục đích:** Centralize tất cả HCI event callbacks
 
@@ -329,7 +374,7 @@ void BLE_EventHandler_RegisterNotificationCallback(BLE_GATTCNotificationCallback
 ---
 
 #### 2.2 Circular Buffer for UART RX
-**File**: `Inc/circular_buffer.h` + `Src/circular_buffer.c`
+**File**: `App/BLE_Gateway/Inc/circular_buffer.h` + `App/BLE_Gateway/Src/circular_buffer.c`
 
 ```c
 typedef struct {
@@ -347,11 +392,13 @@ int  CircularBuffer_GetLine(CircularBuffer_t *cb, char *line, uint16_t max_len);
 
 ---
 
-#### 2.3 Debug Trace Module
-**File**: `Inc/debug_trace.h` + `Src/debug_trace.c`
+#### 2.3 Debug Trace Module (USB CDC Only!)
+**File**: `App/BLE_Gateway/Inc/debug_trace.h` + `App/BLE_Gateway/Src/debug_trace.c`
+
+**CRITICAL**: Debug chỉ qua USB CDC (printf), không qua UART!
 
 ```c
-void DEBUG_PRINT(const char *fmt, ...);
+void DEBUG_PRINT(const char *fmt, ...);              // Uses printf() -> USB CDC
 void DEBUG_PRINT_MAC(const uint8_t *mac);
 void DEBUG_PRINT_HEX(const uint8_t *data, uint16_t len);
 void DEBUG_PrintConnectionInfo(uint16_t conn_handle);
@@ -381,12 +428,15 @@ void DEBUG_PrintDeviceList(void);
 ## IV. WORKFLOW IMPLEMENTATION
 
 ### **Phase 1: Foundation (Tuần 1)**
-1. ✅ Tạo `circular_buffer` module
-2. ✅ Tạo `at_command` module với parser cơ bản
-3. ✅ Tạo `ble_device_manager` module
-4. ✅ Sửa `hci_le_advertising_report_event()` - tắt auto-connect
-5. ✅ Bật LPUART1 interrupt trong NVIC (CubeMX)
-6. ✅ Tăng HeapSize & StackSize (CubeMX)
+1. ✅ Tạo folder `App/BLE_Gateway/Inc` và `App/BLE_Gateway/Src`
+2. ✅ Redirect printf() → USB CDC (sửa `_write()` trong main.c)
+3. ✅ Tạo `circular_buffer` module
+4. ✅ Tạo `at_command` module với parser cơ bản (chỉ UART RX/TX)
+5. ✅ Tạo `ble_device_manager` module
+6. ✅ Sửa `hci_le_advertising_report_event()` - tắt auto-connect
+7. ✅ Bật LPUART1 interrupt trong NVIC (CubeMX)
+8. ✅ Tăng HeapSize & StackSize (CubeMX)
+9. ✅ Update CMakeLists.txt để include App/BLE_Gateway sources
 
 ### **Phase 2: Core BLE Functions (Tuần 2)**
 1. ✅ Implement `BLE_Connection_CreateConnection()` - GAP connect
@@ -430,30 +480,44 @@ void DEBUG_PrintDeviceList(void);
 ## VI. CẤU TRÚC THƯ MỤC SAU IMPLEMENT
 
 ```
-STM32WB_Module_BLE/
-├── Inc/
+STM32_WB55_BLE_V2/
+├── App/
+│   └── BLE_Gateway/              [NEW - All custom application code]
+│       ├── Inc/
+│       │   ├── at_command.h              [NEW - AT parser for LPUART1]
+│       │   ├── ble_device_manager.h      [NEW - Device list management]
+│       │   ├── ble_connection.h          [NEW - Multi-connection state]
+│       │   ├── ble_gatt_client.h         [NEW - GATT operations]
+│       │   ├── ble_event_handler.h       [NEW - BLE event callbacks]
+│       │   ├── circular_buffer.h         [NEW - UART RX buffer]
+│       │   └── debug_trace.h             [NEW - USB CDC debug only]
+│       └── Src/
+│           ├── at_command.c              [NEW]
+│           ├── ble_device_manager.c      [NEW]
+│           ├── ble_connection.c          [NEW]
+│           ├── ble_gatt_client.c         [NEW]
+│           ├── ble_event_handler.c       [NEW]
+│           ├── circular_buffer.c         [NEW]
+│           └── debug_trace.c             [NEW]
+├── Inc/                          [STM32CubeMX - DO NOT EDIT manually]
 │   ├── app_ble.h
 │   ├── p2p_client_app.h
-│   ├── at_command.h              [NEW]
-│   ├── ble_device_manager.h      [NEW]
-│   ├── ble_connection.h          [NEW]
-│   ├── ble_gatt_client.h         [NEW]
-│   ├── ble_event_handler.h       [NEW]
-│   ├── circular_buffer.h         [NEW]
-│   └── debug_trace.h             [NEW]
-├── Src/
-│   ├── app_ble.c                 [MODIFIED]
-│   ├── p2p_client_app.c          [MODIFIED - scan callback]
-│   ├── main.c                    [MODIFIED]
-│   ├── at_command.c              [NEW]
-│   ├── ble_device_manager.c      [NEW]
-│   ├── ble_connection.c          [NEW]
-│   ├── ble_gatt_client.c         [NEW]
-│   ├── ble_event_handler.c       [NEW]
-│   ├── circular_buffer.c         [NEW]
-│   └── debug_trace.c             [NEW]
-└── CMakeLists.txt                [MODIFIED - add new sources]
+│   ├── main.h
+│   └── usbd_cdc_if.h
+├── Src/                          [STM32CubeMX - Edit in USER CODE sections only]
+│   ├── app_ble.c                 [MODIFIED - integrate Gateway init]
+│   ├── p2p_client_app.c          [MODIFIED - scan callback to manager]
+│   ├── main.c                    [MODIFIED - USB CDC printf redirect]
+│   ├── usbd_cdc_if.c             [MODIFIED - CDC_Receive_FS callback]
+│   └── stm32wbxx_it.c            [MODIFIED - UART interrupt]
+└── CMakeLists.txt                [MODIFIED - add App/BLE_Gateway/**/*.c]
 ```
+
+**Key Points**:
+- ✅ All custom code isolated in `App/BLE_Gateway/`
+- ✅ CubeMX can regenerate Inc/Src without destroying custom code
+- ✅ Clear separation: LPUART1=AT commands, USB CDC=debug printf
+- ✅ Easy to add to CMakeLists: `file(GLOB_RECURSE GATEWAY_SOURCES "App/BLE_Gateway/Src/*.c")`
 
 ---
 
