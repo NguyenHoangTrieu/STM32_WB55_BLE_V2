@@ -10,6 +10,8 @@
 #include "ble_device_manager.h"
 #include "debug_trace.h"
 #include "main.h"
+#include "app_conf.h"
+#include "stm32_seq.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +49,11 @@ void AT_Command_Init(void)
 void AT_Command_ReceiveByte(uint8_t byte)
 {
     CircularBuffer_Put(&at_circular_buf, byte);
+
+    // Trigger sequencer task when a line terminator arrives
+    if (byte == '\n' || byte == '\r') {
+        UTIL_SEQ_SetTask(1 << CFG_TASK_AT_CMD_PROC_ID, CFG_SCH_PRIO_0);
+    }
 }
 
 CircularBuffer_t* AT_Command_GetBuffer(void)

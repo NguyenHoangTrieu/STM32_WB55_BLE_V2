@@ -1,7 +1,8 @@
 # STM32WB BLE Gateway - Thực hiện (Implementation Plan)
 
-## Ngày tạo: 13/01/2025 | Cập nhật: 16/01/2026
+## Ngày tạo: 13/01/2025 | Cập nhật: 19/01/2026
 **Mục tiêu**: Xây dựng Gateway trung tâm (Hub) quản lý nhiều thiết bị BLE thông qua lệnh AT
+**Status**: ✅ Phase 1 Complete + Optimized
 
 ---
 
@@ -21,18 +22,20 @@ STM32_WB55_BLE_V2/
 │       │   ├── at_command.h
 │       │   ├── ble_device_manager.h
 │       │   ├── ble_connection.h
-│       │   ├── ble_gatt_client.h
+│       │   ├── ble_gatt_client.h       [OPTIMIZED - write/notify only]
 │       │   ├── ble_event_handler.h
 │       │   ├── circular_buffer.h
-│       │   └── debug_trace.h
+│       │   ├── debug_trace.h
+│       │   └── module_execute.h        [NEW - Application entry point]
 │       └── Src/
 │           ├── at_command.c
 │           ├── ble_device_manager.c
 │           ├── ble_connection.c
-│           ├── ble_gatt_client.c
+│           ├── ble_gatt_client.c       [OPTIMIZED - removed unused stubs]
 │           ├── ble_event_handler.c
 │           ├── circular_buffer.c
-│           └── debug_trace.c
+│           ├── debug_trace.c
+│           └── module_execute.c        [NEW - Init + main loop handler]
 ├── Inc/                       [STM32CubeMX generated]
 │   ├── app_ble.h
 │   ├── p2p_client_app.h
@@ -311,37 +314,15 @@ BLE_ConnectionState_t BLE_Connection_GetState(uint16_t conn_handle);
 
 ---
 
-#### 1.5 GATT Client Discovery & R/W
+#### 1.5 GATT Client Write & Notify (OPTIMIZED)
 **File**: `App/BLE_Gateway/Inc/ble_gatt_client.h` + `App/BLE_Gateway/Src/ble_gatt_client.c`
 
-**Cấu trúc:**
+**Note**: Discovery và read operations đã được xóa vì chưa được implement và không được sử dụng.
+
+**API (Simplified):**
 ```c
-typedef struct {
-    uint16_t service_handle;
-    uint16_t start_handle;
-    uint16_t end_handle;
-    uint8_t  uuid_type;
-    uint8_t  uuid[16];
-} BLE_Service_t;
-
-typedef struct {
-    uint16_t char_handle;
-    uint16_t value_handle;
-    uint8_t  properties;
-    uint8_t  uuid_type;
-    uint8_t  uuid[16];
-} BLE_Characteristic_t;
-```
-
-**API:**
-```c
-// Discovery
-int BLE_GATT_DiscoverAllServices(uint16_t conn_handle);
-int BLE_GATT_DiscoverCharacteristics(uint16_t conn_handle, uint16_t start_h, uint16_t end_h);
-int BLE_GATT_DiscoverDescriptors(uint16_t conn_handle, uint16_t start_h, uint16_t end_h);
-
-// Read/Write
-int BLE_GATT_ReadCharacteristic(uint16_t conn_handle, uint16_t char_handle);
+// Write/Notify only - actively used operations
+void BLE_GATT_Init(void);
 int BLE_GATT_WriteCharacteristic(uint16_t conn_handle, uint16_t char_handle, 
                                   const uint8_t *data, uint16_t len);
 int BLE_GATT_EnableNotification(uint16_t conn_handle, uint16_t desc_handle);
@@ -350,9 +331,28 @@ int BLE_GATT_DisableNotification(uint16_t conn_handle, uint16_t desc_handle);
 
 ---
 
-### **TIER 2: HIGH PRIORITY (Nên làm)**
+#### 1.6 Application Executor (NEW)
+**File**: `App/BLE_Gateway/Inc/module_execute.h` + `App/BLE_Gateway/Src/module_execute.c`
 
-#### 2.1 BLE Event Dispatcher
+**Mục đích:** Đơn giản hóa việc integrate vào main.c - chỉ cần 2 hàm
+
+**API:**
+```c
+void module_ble_init(void);   // Call once during initialization
+void module_ble_start(void);  // Call in main loop to process AT commands
+```
+
+**Implementation:**
+- Khởi tạo tất cả modules theo đúng thứ tự
+- Tự động đăng ký callbacks
+- Xử lý AT commands từ circular buffer
+- Single entry point - dễ maintain
+
+---
+
+### **TIER 2: HIGH PRIORITY (Đã hoàn thành)**
+
+#### 2.1 BLE Event Dispatcher ✅
 **File**: `App/BLE_Gateway/Inc/ble_event_handler.h` + `App/BLE_Gateway/Src/ble_event_handler.c`
 
 **Mục đích:** Centralize tất cả HCI event callbacks
@@ -373,7 +373,7 @@ void BLE_EventHandler_RegisterNotificationCallback(BLE_GATTCNotificationCallback
 
 ---
 
-#### 2.2 Circular Buffer for UART RX
+#### 2.2 Circular Buffer for UART RX ✅
 **File**: `App/BLE_Gateway/Inc/circular_buffer.h` + `App/BLE_Gateway/Src/circular_buffer.c`
 
 ```c

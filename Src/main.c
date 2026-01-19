@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
+#include "module_execute.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -151,6 +152,8 @@ int main(void)
   HAL_GPIO_WritePin(GPIOB, LED_G_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, LED_R_Pin, GPIO_PIN_SET);
   printf("All Leds On\r\n");
+  module_ble_init();
+  printf("BLE Module Initialized\r\n");
   /* USER CODE END BSP */
 
   /* Infinite loop */
@@ -175,7 +178,6 @@ int main(void)
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
-    printf("Main Loop Running...\r\n");
   }
   /* USER CODE END 3 */
 }
