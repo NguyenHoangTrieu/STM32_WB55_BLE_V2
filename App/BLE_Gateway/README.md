@@ -252,7 +252,6 @@ BLE_Gateway/
    
    // In main loop
    while(1) {
-       module_ble_start();
        // ... other tasks
    }
    ```
