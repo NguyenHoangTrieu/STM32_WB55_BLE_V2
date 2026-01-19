@@ -162,22 +162,23 @@ int main(void)
   {
 
     /* -- Sample board code for User push-button in interrupt mode ---- */
-    // BSP_LED_Toggle(LED_BLUE);
-    HAL_GPIO_TogglePin(GPIOB, LED_Y_Pin);
-    HAL_Delay(delay);
+    // // BSP_LED_Toggle(LED_BLUE);
+    // HAL_GPIO_TogglePin(GPIOB, LED_Y_Pin);
+    // HAL_Delay(delay);
 
-    // BSP_LED_Toggle(LED_GREEN);
-    HAL_GPIO_TogglePin(GPIOB, LED_G_Pin);
-    HAL_Delay(delay);
+    // // BSP_LED_Toggle(LED_GREEN);
+    // HAL_GPIO_TogglePin(GPIOB, LED_G_Pin);
+    // HAL_Delay(delay);
 
-    // BSP_LED_Toggle(LED_RED);
-    HAL_GPIO_TogglePin(GPIOB, LED_R_Pin);
-    HAL_Delay(delay);
+    // // BSP_LED_Toggle(LED_RED);
+    // HAL_GPIO_TogglePin(GPIOB, LED_R_Pin);
+    // HAL_Delay(delay);
 
     /* USER CODE END WHILE */
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
+    // printf("Main loop is running!\r\n");
   }
   /* USER CODE END 3 */
 }
@@ -352,7 +353,10 @@ static void MX_LPUART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN LPUART1_Init 2 */
-
+  // Enable UART RX interrupt for AT command reception
+  __HAL_UART_ENABLE_IT(&hlpuart1, UART_IT_RXNE);
+  HAL_NVIC_SetPriority(LPUART1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(LPUART1_IRQn);
   /* USER CODE END LPUART1_Init 2 */
 
 }

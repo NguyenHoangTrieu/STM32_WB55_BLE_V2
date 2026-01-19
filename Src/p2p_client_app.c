@@ -32,7 +32,7 @@
 #include "app_ble.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "ble_event_handler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -449,6 +449,12 @@ static SVCCTL_EvtAckStatus_t Event_Handler(void *Event)
           aci_gatt_notification_event_rp0 *pr = (void*)blecore_evt->data;
           uint8_t index;
 
+          /* Forward ALL notifications to BLE Gateway */
+          BLE_EventHandler_OnNotification(pr->Connection_Handle, 
+                                          pr->Attribute_Handle,
+                                          pr->Attribute_Value, 
+                                          pr->Attribute_Value_Length);
+
           index = 0;
           while((index < BLE_CFG_CLT_MAX_NBR_CB) &&
                   (aP2PClientContext[index].connHandle != pr->Connection_Handle))
@@ -524,7 +530,7 @@ void Gatt_Notification(P2P_Client_App_Notification_evt_t *pNotification)
 
     case P2P_NOTIFICATION_INFO_RECEIVED_EVT:
 /* USER CODE BEGIN P2P_NOTIFICATION_INFO_RECEIVED_EVT */
-
+      /* Notification already forwarded to BLE Gateway in Event_Handler */
 /* USER CODE END P2P_NOTIFICATION_INFO_RECEIVED_EVT */
       break;
 

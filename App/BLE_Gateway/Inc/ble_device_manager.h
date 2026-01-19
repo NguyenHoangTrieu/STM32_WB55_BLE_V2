@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define MAX_BLE_DEVICES     8
+#define MAX_BLE_DEVICES     32  /* Maximum devices in scan list */
 #define BLE_MAC_LEN         6
 
 typedef struct {

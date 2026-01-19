@@ -52,27 +52,27 @@ BLE_Gateway/
   - `duration_ms`: Thời gian quét (milliseconds)
 - **Response**: 
   - `OK\r\n` - Bắt đầu quét thành công
-  - `+SCAN:<MAC>,<RSSI>\r\n` - Mỗi device được tìm thấy
+  - `+SCAN:<MAC>,<RSSI>,<name>\r\n` - Mỗi device được tìm thấy
 - **Ví dụ**:
   ```
   Host: AT+SCAN=5000\r\n
   Gateway: OK\r\n
-  Gateway: +SCAN:AA:BB:CC:DD:EE:FF,-65\r\n
-  Gateway: +SCAN:11:22:33:44:55:66,-72\r\n
+  Gateway: +SCAN:AA:BB:CC:DD:EE:FF,-65,MyPeripheral\r\n
+  Gateway: +SCAN:11:22:33:44:55:66,-72,LightBulb\r\n
   ```
 
 #### `AT+LIST`
 - **Chức năng**: Liệt kê tất cả devices đã phát hiện
 - **Response**:
   - `+LIST:<count>\r\n` - Tổng số devices
-  - `+DEV:<idx>,<MAC>,<RSSI>,<conn_handle>\r\n` - Thông tin từng device
+  - `+DEV:<idx>,<MAC>,<RSSI>,<conn_handle>,<name>\r\n` - Thông tin từng device
   - `OK\r\n`
 - **Ví dụ**:
   ```
   Host: AT+LIST\r\n
   Gateway: +LIST:2\r\n
-  Gateway: +DEV:0,AA:BB:CC:DD:EE:FF,-65,0xFFFF\r\n
-  Gateway: +DEV:1,11:22:33:44:55:66,-72,0x0001\r\n
+  Gateway: +DEV:0,AA:BB:CC:DD:EE:FF,-65,0xFFFF,MyPeripheral\r\n
+  Gateway: +DEV:1,11:22:33:44:55:66,-72,0x0001,LightBulb\r\n
   Gateway: OK\r\n
   ```
 
@@ -150,13 +150,37 @@ BLE_Gateway/
 
 #### `AT+READ=<idx>,<handle>` ⚠️ NOT IMPLEMENTED
 - **Chức năng**: Đọc giá trị characteristic
-- **Status**: Đã bị xóa do không sử dụng
-- **Alternative**: Sử dụng notification thay thế
+- **Status**: Đã implement
+- **Response**:
+  - `OK\r\n` - Bắt đầu đọc thành công
+  - `+READ:<conn_handle>,<handle>,<data_hex>\r\n` - Khi có dữ liệu trả về (async qua GATT event)
+  - `ERROR\r\n` - Device không kết nối hoặc handle không hợp lệ
+- **Ví dụ**:
+  ```
+  Host: AT+READ=0,0x000E\r\n
+  Gateway: OK\r\n
+  Gateway: +READ:0x0001,0x000E,01020304\r\n
+  ```
+- **Lưu ý**: Kết quả trả về async qua GATT event.
 
-#### `AT+DISC=<idx>` ⚠️ NOT IMPLEMENTED  
+#### `AT+DISC=<idx>` ✅ Implemented
 - **Chức năng**: Discover services và characteristics
-- **Status**: Đã bị xóa do không sử dụng
-- **Alternative**: Sử dụng handles cố định hoặc công cụ nRF Connect để discovery trước
+- **Status**: Đã implement
+- **Response**:
+  - `OK\r\n` - Bắt đầu discovery thành công
+  - `+NAME:<device_name>\r\n` - Tên của thiết bị đang kết nối
+  - `+SERVICE:<conn_handle>,<service_handle>,<uuid>\r\n` - Khi có service trả về (async qua GATT event)
+  - `+CHAR:<conn_handle>,<char_handle>,<uuid>\r\n` - Khi có characteristic trả về (async qua GATT event)
+  - `ERROR\r\n` - Device không kết nối hoặc lỗi
+- **Ví dụ**:
+  ```
+  Host: AT+DISC=0\r\n
+  Gateway: OK\r\n
+  Gateway: +NAME:MyPeripheral\r\n
+  Gateway: +SERVICE:0x0001,0x000E,180F\r\n
+  Gateway: +CHAR:0x0001,0x000F,2A19\r\n
+  ```
+- **Lưu ý**: Kết quả trả về async qua GATT event.
 
 ---
 

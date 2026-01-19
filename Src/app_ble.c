@@ -38,7 +38,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ble_connection.h"
+#include "ble_event_handler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -515,7 +516,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
     case HCI_DISCONNECTION_COMPLETE_EVT_CODE:
       {
         /* USER CODE BEGIN EVT_DISCONN_COMPLETE */
-
+        BLE_Connection_OnDisconnected(cc->Connection_Handle, cc->Reason);
         /* USER CODE END EVT_DISCONN_COMPLETE */
         if (cc->Connection_Handle == BleApplicationContext.BleApplicationContext_legacy.connectionHandle)
         {
@@ -544,7 +545,11 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
 
           case HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE:
             /* USER CODE BEGIN EVT_LE_CONN_COMPLETE */
-
+            {
+              /* Forward to BLE Gateway */
+              hci_le_connection_complete_event_rp0 *conn_evt = (hci_le_connection_complete_event_rp0 *) meta_evt->data;
+              BLE_Connection_OnConnected(conn_evt->Peer_Address, conn_evt->Connection_Handle, conn_evt->Status);
+            }
             /* USER CODE END EVT_LE_CONN_COMPLETE */
             /**
              * The connection is done,
@@ -575,7 +580,14 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
             {
               uint8_t *adv_report_data;
               /* USER CODE BEGIN EVT_LE_ADVERTISING_REPORT */
-
+              {
+                /* Forward scan report to BLE Gateway */
+                int8_t rssi;
+                le_advertising_event = (hci_le_advertising_report_event_rp0 *) meta_evt->data;
+                adv_report_data = (uint8_t*)(&le_advertising_event->Advertising_Report[0].Length_Data) + 1;
+                rssi = (int8_t)*(adv_report_data + le_advertising_event->Advertising_Report[0].Length_Data);
+                BLE_Connection_OnScanReport(le_advertising_event->Advertising_Report[0].Address, rssi);
+              }
               /* USER CODE END EVT_LE_ADVERTISING_REPORT */
               le_advertising_event = (hci_le_advertising_report_event_rp0 *) meta_evt->data;
 

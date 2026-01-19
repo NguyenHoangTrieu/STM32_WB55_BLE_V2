@@ -15,17 +15,8 @@
 #define AT_COMMAND_H
 
 #include <stdint.h>
-#include "circular_buffer.h"
 
-#define AT_CMD_BUFFER_SIZE  256
 #define AT_CMD_MAX_LEN      128
-
-typedef enum {
-    AT_CMD_OK,
-    AT_CMD_ERROR,
-    AT_CMD_INVALID,
-    AT_CMD_PENDING,
-} AT_CommandStatus_t;
 
 /**
   * @brief Initialize AT command handler
@@ -45,14 +36,14 @@ void AT_Command_ReceiveByte(uint8_t byte);
 void AT_Command_Process(const char *cmd_line);
 
 /**
+  * @brief Process ready command (called from sequencer task)
+  */
+void AT_Command_ProcessReady(void);
+
+/**
   * @brief Send response via UART (NO printf!)
   */
 void AT_Response_Send(const char *fmt, ...);
-
-/**
-  * @brief Get circular buffer (for UART IRQ handler)
-  */
-CircularBuffer_t* AT_Command_GetBuffer(void);
 
 /* ============ AT Command Handlers ============ */
 

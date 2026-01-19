@@ -22,6 +22,7 @@
 #include "stm32wbxx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "at_command.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,8 +60,9 @@ extern PCD_HandleTypeDef hpcd_USB_FS;
 extern IPCC_HandleTypeDef hipcc;
 extern DMA_HandleTypeDef hdma_lpuart1_rx;
 extern DMA_HandleTypeDef hdma_lpuart1_tx;
+extern UART_HandleTypeDef hlpuart1;
 /* USER CODE BEGIN EV */
-
+extern UART_HandleTypeDef hlpuart1;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -255,6 +257,41 @@ void USB_LP_IRQHandler(void)
   /* USER CODE BEGIN USB_LP_IRQn 1 */
 
   /* USER CODE END USB_LP_IRQn 1 */
+}
+
+/**
+  * @brief This function handles LPUART1 global interrupt.
+  */
+void LPUART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN LPUART1_IRQn 0 */
+    // Check RXNE flag (Receive Not Empty)
+    if (__HAL_UART_GET_FLAG(&hlpuart1, UART_FLAG_RXNE) && 
+        __HAL_UART_GET_IT_SOURCE(&hlpuart1, UART_IT_RXNE)) {
+        // Read data - this also clears RXNE flag
+        uint8_t byte = (uint8_t)(hlpuart1.Instance->RDR);
+        AT_Command_ReceiveByte(byte);
+    }
+    
+    // Handle overrun error - MUST clear or UART stops working
+    if (__HAL_UART_GET_FLAG(&hlpuart1, UART_FLAG_ORE)) {
+        __HAL_UART_CLEAR_FLAG(&hlpuart1, UART_CLEAR_OREF);
+    }
+    
+    // Handle framing error
+    if (__HAL_UART_GET_FLAG(&hlpuart1, UART_FLAG_FE)) {
+        __HAL_UART_CLEAR_FLAG(&hlpuart1, UART_CLEAR_FEF);
+    }
+    
+    // Handle noise error
+    if (__HAL_UART_GET_FLAG(&hlpuart1, UART_FLAG_NE)) {
+        __HAL_UART_CLEAR_FLAG(&hlpuart1, UART_CLEAR_NEF);
+    }
+  /* USER CODE END LPUART1_IRQn 0 */
+  HAL_UART_IRQHandler(&hlpuart1);
+  /* USER CODE BEGIN LPUART1_IRQn 1 */
+
+  /* USER CODE END LPUART1_IRQn 1 */
 }
 
 /**

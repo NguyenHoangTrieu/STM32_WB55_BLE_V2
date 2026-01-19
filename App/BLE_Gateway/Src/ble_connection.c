@@ -10,7 +10,9 @@
 #include "ble_device_manager.h"
 #include "debug_trace.h"
 #include "at_command.h"
+#include "ble_gap_aci.h"
 #include "ble_hci_le.h"
+#include <string.h>
 
 extern void AT_Response_Send(const char *fmt, ...);
 
@@ -25,7 +27,9 @@ static uint8_t connection_count = 0;
 
 void BLE_Connection_Init(void)
 {
-    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    uint8_t i;
+    
+    for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         connections[i].conn_handle = 0xFFFF;
         connections[i].state = CONN_STATE_IDLE;
     }
@@ -35,107 +39,121 @@ void BLE_Connection_Init(void)
 
 int BLE_Connection_StartScan(uint16_t duration_ms)
 {
+    tBleStatus ret;
+    
     DEBUG_INFO("Starting BLE scan: %dms", duration_ms);
     
-    // Set scan parameters: Active scan, 10ms interval/window
-    uint8_t ret = hci_le_set_scan_parameters(
-        0x01,           // Active scan
-        0x0010,         // Scan interval: 10ms (0x0010 * 0.625ms)
-        0x0010,         // Scan window: 10ms
-        0x01,           // Public address type
-        0x00            // Accept all devices
+    /* Use ACI_GAP_START_GENERAL_DISCOVERY_PROC for active scanning
+     * Scan interval: 0x0010 = 10ms
+     * Scan window: 0x0010 = 10ms  
+     * Own address: Public (0x00)
+     * Filter duplicates: No (0x00) - report all devices
+     */
+    ret = aci_gap_start_general_discovery_proc(
+        0x0010,     /* LE_Scan_Interval: 10ms */
+        0x0010,     /* LE_Scan_Window: 10ms */
+        0x00,       /* Own_Address_Type: Public */
+        0x00        /* Filter_Duplicates: Disabled (report all) */
     );
     
-    if (ret != 0) {
-        DEBUG_ERROR("Failed to set scan parameters: 0x%02X", ret);
-        return -1;
-    }
-    
-    // Enable scan
-    ret = hci_le_set_scan_enable(
-        0x01,           // Enable scan
-        0x00            // No duplicate filtering (report all)
-    );
-    
-    if (ret != 0) {
-        DEBUG_ERROR("Failed to enable scan: 0x%02X", ret);
+    if (ret != BLE_STATUS_SUCCESS) {
+        DEBUG_ERROR("Failed to start general discovery: 0x%02X", ret);
         return -1;
     }
     
     BLE_DeviceManager_SetScanActive(1);
+    DEBUG_INFO("Scan started successfully");
     return 0;
 }
 
 int BLE_Connection_StopScan(void)
 {
+    tBleStatus ret;
+    
     DEBUG_INFO("Stopping BLE scan");
     
-    uint8_t ret = hci_le_set_scan_enable(0x00, 0x00);  // Disable scan
+    /* Terminate general discovery procedure (0x02 = GAP_GENERAL_DISCOVERY_PROC) */
+    ret = aci_gap_terminate_gap_proc(0x02);
     
-    if (ret != 0) {
-        DEBUG_ERROR("Failed to disable scan: 0x%02X", ret);
+    if (ret != BLE_STATUS_SUCCESS) {
+        DEBUG_ERROR("Failed to terminate scan: 0x%02X", ret);
         return -1;
     }
     
     BLE_DeviceManager_SetScanActive(0);
+    DEBUG_INFO("Scan stopped successfully");
     return 0;
 }
 
 int BLE_Connection_CreateConnection(const uint8_t *mac)
 {
-    if (!mac) return -1;
+    tBleStatus ret;
+    
+    if (mac == NULL) {
+        return -1;
+    }
     
     DEBUG_INFO("Creating connection to device");
     DEBUG_PrintMAC(mac);
     
-    // Stop scan first
+    /* Stop scan first */
     BLE_Connection_StopScan();
     
-    // Create connection
-    uint8_t ret = hci_le_create_connection(
-        0x0010,         // Scan interval: 10ms
-        0x0010,         // Scan window: 10ms
-        0x00,           // Initiator filter policy: no whitelist
-        0x01,           // Peer address type: public
-        (uint8_t *)mac, // Peer address
-        0x01,           // Own address type: public
-        0x0018,         // Connection interval min: 24 * 1.25ms = 30ms
-        0x0028,         // Connection interval max: 40 * 1.25ms = 50ms
-        0x0000,         // Connection latency: 0
-        0x00C8,         // Supervision timeout: 200 * 10ms = 2s
-        0x0000,         // Min CE length: 0
-        0x0000          // Max CE length: 0
+    /* Create connection using ACI_GAP_CREATE_CONNECTION
+     * Peer address type: 0x00 = Public (most common)
+     */
+    ret = aci_gap_create_connection(
+        0x0010,         /* LE_Scan_Interval: 10ms (0x0010 * 0.625ms) */
+        0x0010,         /* LE_Scan_Window: 10ms */
+        0x00,           /* Peer_Address_Type: Public */
+        mac,            /* Peer_Address */
+        0x00,           /* Own_Address_Type: Public */
+        0x0018,         /* Conn_Interval_Min: 30ms (24 * 1.25ms) */
+        0x0028,         /* Conn_Interval_Max: 50ms (40 * 1.25ms) */
+        0x0000,         /* Conn_Latency: 0 */
+        0x00C8,         /* Supervision_Timeout: 2000ms (200 * 10ms) */
+        0x0000,         /* Minimum_CE_Length: 0 */
+        0x0000          /* Maximum_CE_Length: 0 */
     );
     
-    if (ret != 0) {
+    if (ret != BLE_STATUS_SUCCESS) {
         DEBUG_ERROR("Failed to create connection: 0x%02X", ret);
         return -1;
     }
     
     AT_Response_Send("+CONNECTING\r\n");
+    DEBUG_INFO("Connection initiated");
     return 0;
 }
 
 int BLE_Connection_TerminateConnection(uint16_t conn_handle)
 {
+    tBleStatus ret;
+    
     DEBUG_INFO("Terminating connection: 0x%04X", conn_handle);
     
-    uint8_t ret = hci_disconnect(conn_handle, 0x13);  // 0x13 = User terminated
+    /* Use HCI_DISCONNECT command - available in ble_hci_le.h
+     * Reason: 0x13 = Remote User Terminated Connection
+     */
+    ret = hci_disconnect(conn_handle, 0x13);
     
-    if (ret != 0) {
+    if (ret != BLE_STATUS_SUCCESS) {
         DEBUG_ERROR("Failed to terminate connection: 0x%02X", ret);
         return -1;
     }
     
+    DEBUG_INFO("Disconnect initiated");
     return 0;
 }
 
 void BLE_Connection_SetState(uint16_t conn_handle, BLE_ConnectionState_t state)
 {
-    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    uint8_t i;
+    
+    for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         if (connections[i].conn_handle == conn_handle) {
             connections[i].state = state;
-            DEBUG_INFO("Connection 0x%04X state: %d", conn_handle, state);
+            DEBUG_INFO("Conn 0x%04X state: %d", conn_handle, (int)state);
             return;
         }
     }
@@ -143,7 +161,9 @@ void BLE_Connection_SetState(uint16_t conn_handle, BLE_ConnectionState_t state)
 
 BLE_ConnectionState_t BLE_Connection_GetState(uint16_t conn_handle)
 {
-    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    uint8_t i;
+    
+    for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         if (connections[i].conn_handle == conn_handle) {
             return connections[i].state;
         }
@@ -153,9 +173,11 @@ BLE_ConnectionState_t BLE_Connection_GetState(uint16_t conn_handle)
 
 uint8_t BLE_Connection_IsConnected(uint16_t conn_handle)
 {
-    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    uint8_t i;
+    
+    for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         if (connections[i].conn_handle == conn_handle) {
-            return (connections[i].state == CONN_STATE_CONNECTED) ? 1 : 0;
+            return (connections[i].state == CONN_STATE_CONNECTED) ? 1U : 0U;
         }
     }
     return 0;
@@ -163,34 +185,39 @@ uint8_t BLE_Connection_IsConnected(uint16_t conn_handle)
 
 void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi)
 {
-    if (!mac) return;
+    int idx;
     
-    int idx = BLE_DeviceManager_AddDevice(mac, rssi);
+    if (mac == NULL) {
+        return;
+    }
+    
+    idx = BLE_DeviceManager_AddDevice(mac, rssi);
     
     if (idx >= 0) {
-        // Send scan report to UART
         AT_Response_Send("+SCAN:%02X:%02X:%02X:%02X:%02X:%02X,%d\r\n",
-                       mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], rssi);
+                       mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], (int)rssi);
     }
 }
 
 void BLE_Connection_OnConnected(const uint8_t *mac, uint16_t conn_handle, uint8_t status)
 {
-    DEBUG_INFO("Connection complete: handle=0x%04X, status=0x%02X", conn_handle, status);
+    int dev_idx;
+    uint8_t i;
+    
+    DEBUG_INFO("Conn complete: hdl=0x%04X status=0x%02X", conn_handle, status);
     
     if (status != 0) {
-        DEBUG_ERROR("Connection failed with status 0x%02X", status);
+        DEBUG_ERROR("Conn failed: 0x%02X", status);
         AT_Response_Send("+CONN_ERROR:%02X\r\n", status);
         return;
     }
     
-    // Find device and update
-    int dev_idx = BLE_DeviceManager_FindDevice(mac);
+    dev_idx = BLE_DeviceManager_FindDevice(mac);
     if (dev_idx >= 0) {
         BLE_DeviceManager_UpdateConnection(dev_idx, conn_handle, 1);
         
-        // Store connection
-        for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+        /* Store in connections array */
+        for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
             if (connections[i].conn_handle == 0xFFFF) {
                 connections[i].conn_handle = conn_handle;
                 connections[i].state = CONN_STATE_CONNECTED;
@@ -206,20 +233,24 @@ void BLE_Connection_OnConnected(const uint8_t *mac, uint16_t conn_handle, uint8_
 
 void BLE_Connection_OnDisconnected(uint16_t conn_handle, uint8_t reason)
 {
-    DEBUG_INFO("Disconnected: handle=0x%04X, reason=0x%02X", conn_handle, reason);
+    int dev_idx;
+    uint8_t i;
     
-    // Find and update device
-    int dev_idx = BLE_DeviceManager_FindConnHandle(conn_handle);
+    DEBUG_INFO("Disconn: hdl=0x%04X reason=0x%02X", conn_handle, reason);
+    
+    dev_idx = BLE_DeviceManager_FindConnHandle(conn_handle);
     if (dev_idx >= 0) {
         BLE_DeviceManager_UpdateConnection(dev_idx, conn_handle, 0);
     }
     
-    // Remove from connections
-    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    /* Remove from connections */
+    for (i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         if (connections[i].conn_handle == conn_handle) {
             connections[i].conn_handle = 0xFFFF;
             connections[i].state = CONN_STATE_IDLE;
-            if (connection_count > 0) connection_count--;
+            if (connection_count > 0) {
+                connection_count--;
+            }
             break;
         }
     }
