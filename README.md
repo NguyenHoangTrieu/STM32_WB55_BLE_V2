@@ -2,8 +2,8 @@
 
 **Version**: 1.0  
 **Last Updated**: 20/01/2026  
-**Platform**: STM32WB55 (Cortex-M4 + BLE 5.0)  
-**Author**: BLE Gateway Team
+**Platform**: STM32WB55 (Cortex-M4 + Cortex-M0+)  
+**Author**: Trieu Nguyen
 
 ---
 
