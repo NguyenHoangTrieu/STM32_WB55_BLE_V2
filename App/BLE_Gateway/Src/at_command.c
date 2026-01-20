@@ -142,6 +142,14 @@ static int ParseHexString(const char *hex_str, uint8_t *out_bytes, uint16_t max_
     if (hex_str == NULL || out_bytes == NULL || max_len == 0) {
         return -1;
     }
+
+    size_t hex_len = strlen(hex_str);
+    if (hex_len % 2 != 0) {
+        return -1; // Odd number of chars
+    }
+    if (hex_len / 2 > max_len) {
+        return -1; // Exceeds buffer size
+    }
     
     while (hex_str[0] != '\0' && hex_str[1] != '\0' && i < max_len) {
         hi = ParseHexNibble(hex_str[0]);
@@ -550,12 +558,13 @@ int AT_LIST_Handler(void)
     for (i = 0; i < count; i++) {
         dev = BLE_DeviceManager_GetDevice((int)i);
         if (dev != NULL) {
-            AT_Response_Send("+DEV:%d,%02X:%02X:%02X:%02X:%02X:%02X,%d,%04X\r\n",
-                           (int)i,
-                           dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
-                           dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0],
-                           (int)dev->rssi,
-                           dev->conn_handle);
+            AT_Response_Send("+DEV:%d,%02X:%02X:%02X:%02X:%02X:%02X,%d,0x%04X,%s\r\n",
+                (int)i,
+                dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
+                dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0],
+                (int)dev->rssi,
+                dev->conn_handle,
+                (dev->name[0] != '\0') ? dev->name : "Unknown");
         }
     }
     

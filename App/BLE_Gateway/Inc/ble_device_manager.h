@@ -14,6 +14,7 @@
 
 #define MAX_BLE_DEVICES     32  /* Maximum devices in scan list */
 #define BLE_MAC_LEN         6
+#define BLE_DEVICE_NAME_MAX_LEN 32
 
 typedef struct {
     uint8_t   mac_addr[BLE_MAC_LEN];    // MAC address
@@ -21,6 +22,8 @@ typedef struct {
     uint8_t   is_connected;             // Connection status
     int8_t    rssi;                     // Last RSSI value
     uint8_t   device_index;             // Index in list
+    uint8_t addr_type;                  // Address type
+    char name[BLE_DEVICE_NAME_MAX_LEN];
 } BLE_Device_t;
 
 typedef struct {
@@ -88,5 +91,15 @@ void BLE_DeviceManager_SetScanActive(uint8_t active);
   * @brief Get scan active state
   */
 uint8_t BLE_DeviceManager_IsScanActive(void);
+
+/**
+  * @brief Update device address type
+  */
+void BLE_DeviceManager_UpdateAddrType(int dev_idx, uint8_t addr_type);
+
+/**
+  * @brief Update device name
+  */
+void BLE_DeviceManager_UpdateName(int dev_idx, const char *name);
 
 #endif /* BLE_DEVICE_MANAGER_H */

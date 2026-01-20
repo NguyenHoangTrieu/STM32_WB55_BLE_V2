@@ -59,13 +59,14 @@ void BLE_EventHandler_RegisterWriteResponseCallback(BLE_GATTCWriteResponseCallba
     write_cb = cb;
 }
 
-void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi)
+void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type)
 {
     DEBUG_PRINT("Event: Scan Report - RSSI=%d", rssi);
     if (scan_cb) {
-        scan_cb(mac, rssi);
+        scan_cb(mac, rssi, name, addr_type);
     }
 }
+
 
 void BLE_EventHandler_OnConnectionComplete(const uint8_t *mac, uint16_t conn_handle, uint8_t status)
 {

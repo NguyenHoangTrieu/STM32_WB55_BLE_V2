@@ -88,6 +88,8 @@ int BLE_Connection_StopScan(void)
 int BLE_Connection_CreateConnection(const uint8_t *mac)
 {
     tBleStatus ret;
+    BLE_Device_t *dev;
+    int dev_idx;
     
     if (mac == NULL) {
         return -1;
@@ -95,6 +97,18 @@ int BLE_Connection_CreateConnection(const uint8_t *mac)
     
     DEBUG_INFO("Creating connection to device");
     DEBUG_PrintMAC(mac);
+    
+    /* Find device to get addr_type */
+    dev_idx = BLE_DeviceManager_FindDevice(mac);
+    if (dev_idx < 0) {
+        DEBUG_ERROR("Device not found in list");
+        return -1;
+    }
+    
+    dev = BLE_DeviceManager_GetDevice(dev_idx);
+    if (dev == NULL) {
+        return -1;
+    }
     
     /* Stop scan first */
     BLE_Connection_StopScan();
@@ -105,7 +119,7 @@ int BLE_Connection_CreateConnection(const uint8_t *mac)
     ret = aci_gap_create_connection(
         0x0010,         /* LE_Scan_Interval: 10ms (0x0010 * 0.625ms) */
         0x0010,         /* LE_Scan_Window: 10ms */
-        0x00,           /* Peer_Address_Type: Public */
+        dev->addr_type, /* Peer_Address_Type: Public */
         mac,            /* Peer_Address */
         0x00,           /* Own_Address_Type: Public */
         0x0018,         /* Conn_Interval_Min: 30ms (24 * 1.25ms) */
@@ -183,19 +197,33 @@ uint8_t BLE_Connection_IsConnected(uint16_t conn_handle)
     return 0;
 }
 
-void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi)
+void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type)
 {
     int idx;
+    uint8_t old_count;
     
     if (mac == NULL) {
         return;
     }
-    
+    old_count = BLE_DeviceManager_GetCount();
     idx = BLE_DeviceManager_AddDevice(mac, rssi);
     
     if (idx >= 0) {
-        AT_Response_Send("+SCAN:%02X:%02X:%02X:%02X:%02X:%02X,%d\r\n",
-                       mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], (int)rssi);
+        /* Update address type */
+        BLE_DeviceManager_UpdateAddrType(idx, addr_type);
+
+        /* Store device name if provided */
+        if (name != NULL && name[0] != '\0') {
+            BLE_DeviceManager_UpdateName(idx, name);
+        }
+
+        /* Send scan report with name */
+        if (BLE_DeviceManager_GetCount() > old_count) {
+            AT_Response_Send("+SCAN:%02X:%02X:%02X:%02X:%02X:%02X,%d,%s\r\n",
+                mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], 
+                (int)rssi, 
+                (name != NULL && name[0] != '\0') ? name : "Unknown");
+        }
     }
 }
 

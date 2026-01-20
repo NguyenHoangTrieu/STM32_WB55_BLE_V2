@@ -72,8 +72,10 @@ uint8_t BLE_Connection_IsConnected(uint16_t conn_handle);
   * @brief Callback when scan discovers device
   * @param mac MAC address
   * @param rssi RSSI value
+  * @param name Device name (if available)
+  * @param addr_type Address type
   */
-void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi);
+void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type);
 
 /**
   * @brief Callback when connection established

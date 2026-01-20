@@ -31,7 +31,7 @@ static void Module_OnNotification(uint16_t conn_handle, uint16_t handle,
     uint16_t i;
     
     /* Send notification data as hex string via AT response */
-    AT_Response_Send("+NOTIFY:0x%04X,0x%04X,", conn_handle, handle);
+    AT_Response_Send("+NOTIFICATION:0x%04X,0x%04X,", conn_handle, handle);
     
     for (i = 0; i < len; i++) {
         AT_Response_Send("%02X", data[i]);

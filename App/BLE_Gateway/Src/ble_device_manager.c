@@ -24,6 +24,8 @@ void BLE_DeviceManager_Init(void)
     for (i = 0; i < MAX_BLE_DEVICES; i++) {
         device_manager.devices[i].conn_handle = 0xFFFF;
         device_manager.devices[i].device_index = i;
+        device_manager.devices[i].addr_type = 0x00;
+        device_manager.devices[i].name[0] = '\0';
     }
     
     DEBUG_INFO("Device Manager initialized");
@@ -54,6 +56,7 @@ int BLE_DeviceManager_AddDevice(const uint8_t *mac, int8_t rssi)
         device_manager.devices[idx].rssi = rssi;
         device_manager.devices[idx].is_connected = 0;
         device_manager.devices[idx].conn_handle = 0xFFFF;
+        device_manager.devices[idx].name[0] = '\0';
         device_manager.device_count++;
         list_full_warned = 0;  /* Reset warning flag */
         
@@ -158,4 +161,30 @@ void BLE_DeviceManager_SetScanActive(uint8_t active)
 uint8_t BLE_DeviceManager_IsScanActive(void)
 {
     return device_manager.scan_active;
+}
+
+void BLE_DeviceManager_UpdateAddrType(int dev_idx, uint8_t addr_type)
+{
+    if (dev_idx < 0 || dev_idx >= (int)device_manager.device_count) {
+        return;
+    }
+
+    device_manager.devices[dev_idx].addr_type = addr_type;
+    DEBUG_INFO("Dev[%d] addr_type updated: 0x%02X", dev_idx, addr_type);
+}
+
+void BLE_DeviceManager_UpdateName(int dev_idx, const char *name)
+{
+    if (dev_idx < 0 || dev_idx >= (int)device_manager.device_count) {
+        return;
+    }
+    
+    if (name == NULL) {
+        device_manager.devices[dev_idx].name[0] = '\0';
+        return;
+    }
+    
+    strncpy(device_manager.devices[dev_idx].name, name, BLE_DEVICE_NAME_MAX_LEN - 1);
+    device_manager.devices[dev_idx].name[BLE_DEVICE_NAME_MAX_LEN - 1] = '\0';
+    DEBUG_INFO("Dev[%d] name updated: %s", dev_idx, name);
 }

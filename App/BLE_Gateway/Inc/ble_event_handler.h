@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 // Event callback function pointers
-typedef void (*BLE_ScanReportCallback_t)(const uint8_t *mac, int8_t rssi);
+typedef void (*BLE_ScanReportCallback_t)(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type);
 typedef void (*BLE_ConnectionCompleteCallback_t)(const uint8_t *mac, uint16_t conn_handle, uint8_t status);
 typedef void (*BLE_DisconnectionCompleteCallback_t)(uint16_t conn_handle, uint8_t reason);
 typedef void (*BLE_GATTCNotificationCallback_t)(uint16_t conn_handle, uint16_t handle,
@@ -61,7 +61,7 @@ void BLE_EventHandler_RegisterWriteResponseCallback(BLE_GATTCWriteResponseCallba
 /**
   * @brief Dispatch scan report event
   */
-void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi);
+void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type);
 
 /**
   * @brief Dispatch connection complete event
