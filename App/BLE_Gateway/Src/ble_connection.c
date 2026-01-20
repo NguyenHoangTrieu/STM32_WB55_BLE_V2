@@ -42,6 +42,8 @@ int BLE_Connection_StartScan(uint16_t duration_ms)
     tBleStatus ret;
     
     DEBUG_INFO("Starting BLE scan: %dms", duration_ms);
+
+    BLE_DeviceManager_ResetScanFlags();
     
     /* Use ACI_GAP_START_GENERAL_DISCOVERY_PROC for active scanning
      * Scan interval: 0x0010 = 10ms
@@ -197,35 +199,42 @@ uint8_t BLE_Connection_IsConnected(uint16_t conn_handle)
     return 0;
 }
 
-void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type)
+void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, 
+                                  const char *name, uint8_t addr_type)
 {
     int idx;
-    uint8_t old_count;
+    BLE_Device_t *dev;
     
     if (mac == NULL) {
         return;
     }
-    old_count = BLE_DeviceManager_GetCount();
+    
     idx = BLE_DeviceManager_AddDevice(mac, rssi);
     
     if (idx >= 0) {
-        /* Update address type */
+        dev = BLE_DeviceManager_GetDevice(idx);
+        if (dev == NULL) {
+            return;
+        }
+        /*Update Address Type*/
         BLE_DeviceManager_UpdateAddrType(idx, addr_type);
-
-        /* Store device name if provided */
+        
         if (name != NULL && name[0] != '\0') {
+            /* Update name if available */
             BLE_DeviceManager_UpdateName(idx, name);
         }
-
-        /* Send scan report with name */
-        if (BLE_DeviceManager_GetCount() > old_count) {
+        
+        /* Send AT response for newly discovered device */
+        if (!dev->reported_in_scan) {
+            dev->reported_in_scan = 1;
             AT_Response_Send("+SCAN:%02X:%02X:%02X:%02X:%02X:%02X,%d,%s\r\n",
-                mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], 
-                (int)rssi, 
+                mac[5], mac[4], mac[3], mac[2], mac[1], mac[0],
+                (int)rssi,
                 (name != NULL && name[0] != '\0') ? name : "Unknown");
         }
     }
 }
+
 
 void BLE_Connection_OnConnected(const uint8_t *mac, uint16_t conn_handle, uint8_t status)
 {

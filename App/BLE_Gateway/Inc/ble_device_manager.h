@@ -24,6 +24,7 @@ typedef struct {
     uint8_t   device_index;             // Index in list
     uint8_t addr_type;                  // Address type
     char name[BLE_DEVICE_NAME_MAX_LEN];
+    uint8_t reported_in_scan;
 } BLE_Device_t;
 
 typedef struct {
@@ -101,5 +102,10 @@ void BLE_DeviceManager_UpdateAddrType(int dev_idx, uint8_t addr_type);
   * @brief Update device name
   */
 void BLE_DeviceManager_UpdateName(int dev_idx, const char *name);
+
+/**
+* @brief Reset reported_in_scan flags for all devices
+*/
+ void BLE_DeviceManager_ResetScanFlags(void);
 
 #endif /* BLE_DEVICE_MANAGER_H */

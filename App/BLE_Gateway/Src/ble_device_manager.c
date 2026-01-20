@@ -57,6 +57,7 @@ int BLE_DeviceManager_AddDevice(const uint8_t *mac, int8_t rssi)
         device_manager.devices[idx].is_connected = 0;
         device_manager.devices[idx].conn_handle = 0xFFFF;
         device_manager.devices[idx].name[0] = '\0';
+        device_manager.devices[idx].reported_in_scan = 0;
         device_manager.device_count++;
         list_full_warned = 0;  /* Reset warning flag */
         
@@ -187,4 +188,13 @@ void BLE_DeviceManager_UpdateName(int dev_idx, const char *name)
     strncpy(device_manager.devices[dev_idx].name, name, BLE_DEVICE_NAME_MAX_LEN - 1);
     device_manager.devices[dev_idx].name[BLE_DEVICE_NAME_MAX_LEN - 1] = '\0';
     DEBUG_INFO("Dev[%d] name updated: %s", dev_idx, name);
+}
+
+void BLE_DeviceManager_ResetScanFlags(void)
+{
+    uint8_t i;
+    for (i = 0; i < device_manager.device_count; i++) {
+        device_manager.devices[i].reported_in_scan = 0;
+    }
+    DEBUG_INFO("Scan flags reset for %d devices", device_manager.device_count);
 }

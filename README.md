@@ -892,46 +892,6 @@ OK
 
 ---
 
-## 📚 Additional Resources
-
-### Datasheets & Reference Manuals
-
-- [STM32WB55 Datasheet](https://www.st.com/resource/en/datasheet/stm32wb55rg.pdf)
-- [STM32WB BLE Stack Documentation](https://www.st.com/resource/en/user_manual/um2550-stm32wb-ble-stack-programming-guidelines-stmicroelectronics.pdf)
-- [BLE Core Specification 5.0](https://www.bluetooth.com/specifications/bluetooth-core-specification/)
-
-### Development Tools
-
-- STM32CubeIDE: [Download](https://www.st.com/en/development-tools/stm32cubeide.html)
-- STM32CubeProgrammer: [Download](https://www.st.com/en/development-tools/stm32cubeprog.html)
-- Serial Terminal: PuTTY, TeraTerm, CoolTerm
-
-### Example Projects
-
-- Heart Rate Monitor Client
-- Environmental Sensor Gateway
-- Smart Home Controller
-- BLE Sniffer/Logger
-
----
-
-## 📄 License
-
-Copyright © 2026 BLE Gateway Team. All rights reserved.
-
-This software is provided "AS-IS" without warranty of any kind.
-
----
-
-## 🤝 Support
-
-For issues, questions, or contributions:
-- **GitHub Issues**: [Project Issues](https://github.com/your-repo/issues)
-- **Email**: support@example.com
-- **Documentation**: [Wiki](https://github.com/your-repo/wiki)
-
----
-
 **End of Documentation**
 
 
