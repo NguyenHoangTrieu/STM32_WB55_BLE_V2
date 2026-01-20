@@ -24,22 +24,22 @@
 
 ## 🎯 Project Overview
 
-STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, cho phép host MCU/PC điều khiển các BLE peripherals thông qua giao thức AT command đơn giản qua UART.
+STM32 BLE Gateway is a complete BLE Central firmware for STM32WB55, enabling host MCU/PC to control BLE peripherals through a simple AT command protocol over UART.
 
 ### Key Capabilities
 
-- **Multi-device scanning**: Quét và lưu trữ tới 8 BLE devices đồng thời
-- **Concurrent connections**: Hỗ trợ kết nối tới 8 devices cùng lúc
+- **Multi-device scanning**: Scan and store up to 8 BLE devices simultaneously
+- **Concurrent connections**: Support up to 8 concurrent device connections
 - **GATT operations**: Write, Read, Notification/Indication support
-- **Service discovery**: Tự động phát hiện services và characteristics
-- **AT command interface**: Giao thức đơn giản, dễ integrate với bất kỳ host nào
+- **Service discovery**: Automatic service and characteristic discovery
+- **AT command interface**: Simple protocol, easy integration with any host
 
 ### Use Cases
 
-- IoT Gateway điều khiển nhiều BLE sensors/actuators
-- BLE sniffer và debugging tool
-- Bridge giữa BLE devices và Cloud/MQTT
-- Testing và validation BLE peripherals
+- IoT Gateway controlling multiple BLE sensors/actuators
+- BLE sniffer and debugging tool
+- Bridge between BLE devices and Cloud/MQTT
+- Testing and validation of BLE peripherals
 - Educational BLE development platform
 
 ---
@@ -54,7 +54,7 @@ STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, ch
 | **RAM** | Min 64KB (recommended 128KB) |
 | **Flash** | Min 256KB (recommended 512KB) |
 | **BLE Stack** | STM32WB Copro Wireless Binary v1.13+ |
-| **Debug** | ST-Link V2/V3 hoặc J-Link |
+| **Debug** | ST-Link V2/V3 or J-Link |
 
 ### Pinout Configuration
 
@@ -70,11 +70,11 @@ STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, ch
 ## ✨ Features
 
 ### Scanning & Discovery
-- ✅ Active scanning với configurable duration
-- ✅ Device name extraction từ advertising data
-- ✅ RSSI measurement và tracking
-- ✅ Deduplication (chỉ report device mới một lần)
-- ✅ Support cả Public và Random address types
+- ✅ Active scanning with configurable duration
+- ✅ Device name extraction from advertising data
+- ✅ RSSI measurement and tracking
+- ✅ Deduplication (report each device once per scan session)
+- ✅ Support both Public and Random address types
 
 ### Connection Management
 - ✅ Multi-device concurrent connections (max 8)
@@ -94,9 +94,9 @@ STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, ch
 
 ### Communication
 - ✅ **UART**: 921600 baud, 8N1, no flow control
-- ✅ **USB CDC**: Debug logging và system events
-- ✅ Interrupt-driven RX với circular buffer
-- ✅ AT command parsing với timeout protection
+- ✅ **USB CDC**: Debug logging and system events
+- ✅ Interrupt-driven RX with circular buffer
+- ✅ AT command parsing with timeout protection
 
 ---
 
@@ -104,7 +104,7 @@ STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, ch
 
 ### LPUART1 (921600 baud) - AT Command Interface
 
-**Purpose**: Bidirectional AT command interface với host
+**Purpose**: Bidirectional AT command interface with host
 
 **Configuration**:
 - Baud rate: 921600 bps
@@ -114,23 +114,23 @@ STM32 BLE Gateway là một firmware BLE Central hoàn chỉnh cho STM32WB55, ch
 - Flow control: None
 
 **Protocol**:
-- RX: Nhận AT commands từ host (terminated by `\r\n`)
-- TX: Gửi responses và events về host
-- Format: ASCII text commands và responses
+- RX: Receive AT commands from host (terminated by `\r\n`)
+- TX: Send responses and events to host
+- Format: ASCII text commands and responses
 
-**Important**: Chỉ dùng cho AT commands, không dùng cho debug output!
+**Important**: Only for AT commands, NOT for debug output!
 
 ### USB CDC - Debug Console
 
-**Purpose**: Real-time debug logging và system monitoring
+**Purpose**: Real-time debug logging and system monitoring
 
 **Features**:
-- `printf()` redirect qua USB CDC
+- `printf()` redirect via USB CDC
 - System events logging
 - BLE stack events
-- Error messages và warnings
+- Error messages and warnings
 
-**Important**: Không nhận AT commands, chỉ output!
+**Important**: Does NOT accept AT commands, output only!
 
 ---
 
@@ -143,9 +143,9 @@ AT+<COMMAND>[=<param1>[,<param2>,...]]<CR><LF>
 ```
 
 **Notes**:
-- Commands case-insensitive nhưng recommend UPPERCASE
+- Commands are case-insensitive but UPPERCASE is recommended
 - Parameters separated by commas
-- Hex values có thể có hoặc không có prefix `0x`
+- Hex values can have optional `0x` prefix
 - MAC addresses format: `AA:BB:CC:DD:EE:FF`
 - Line terminator: `\r\n` (CR+LF)
 
@@ -159,7 +159,7 @@ AT+<COMMAND>[=<param1>[,<param2>,...]]<CR><LF>
 **Status codes**:
 - `OK` - Command executed successfully
 - `ERROR` - Command failed
-- `+ERROR:<reason>` - Error với specific reason
+- `+ERROR:<reason>` - Error with specific reason
 
 ---
 
@@ -193,7 +193,7 @@ Host → AT
 
 **Responses**:
 - `OK` - Scan started successfully
-- `+SCAN:<MAC>,<RSSI>,<name>` - Device discovered (only once per unique device)
+- `+SCAN:<MAC>,<RSSI>,<name>` - Device discovered (once per scan session)
 - `ERROR` - Failed to start scan
 
 **Example**:
@@ -206,9 +206,10 @@ Host → AT+SCAN=5000
 ```
 
 **Notes**:
-- Mỗi device chỉ được report một lần dù advertise nhiều lần
-- RSSI được update internally nhưng không re-send qua UART
-- Scan tự động stop sau `duration_ms` hoặc dùng `AT+STOP`
+- Each device reported once per scan session even if advertising multiple times
+- RSSI updated internally but not re-sent via UART within same scan
+- Scan stops automatically after `duration_ms` or use `AT+STOP`
+- Starting new scan resets reporting flags - devices will be reported again
 
 ---
 
@@ -243,7 +244,7 @@ Host → AT+STOP
 - `OK` - Command complete
 
 **Field descriptions**:
-- `idx`: Device index (0-7) - dùng cho các commands khác
+- `idx`: Device index (0-7) - used for other commands
 - `MAC`: Device MAC address
 - `RSSI`: Last measured signal strength (dBm)
 - `conn_handle`: Connection handle (0xFFFF if not connected)
@@ -278,7 +279,7 @@ Host → AT+CLEAR
      ← OK
 ```
 
-**Note**: Chỉ clear discovered devices, không affect active connections
+**Note**: Only clears discovered devices, does not affect active connections
 
 ---
 
@@ -308,10 +309,10 @@ Host → AT+CONNECT=AA:BB:CC:DD:EE:FF
 ```
 
 **Notes**:
-- Device phải được scan trước (`AT+SCAN`) trước khi connect
-- Scan tự động stop khi bắt đầu connect
+- Device must be scanned first (`AT+SCAN`) before connecting
+- Scan stops automatically when connection starts
 - Connection timeout: ~2 seconds
-- Hỗ trợ concurrent connections tới 8 devices
+- Supports concurrent connections up to 8 devices
 
 ---
 
@@ -320,7 +321,7 @@ Host → AT+CONNECT=AA:BB:CC:DD:EE:FF
 **Function**: Disconnect device
 
 **Parameters**:
-- `idx`: Device index (0-7) từ `AT+LIST`
+- `idx`: Device index (0-7) from `AT+LIST`
 
 **Responses**:
 - `OK` - Disconnect initiated
@@ -387,9 +388,9 @@ Host → AT+DISC=0
 ```
 
 **Notes**:
-- Results arrive asynchronously qua GATT events
-- Service UUID và Char UUID ở format 16-bit (short form)
-- Discovery có thể mất 1-5 seconds depending on số lượng services
+- Results arrive asynchronously via GATT events
+- Service UUID and Char UUID in 16-bit short form
+- Discovery may take 1-5 seconds depending on number of services
 
 ---
 
@@ -399,7 +400,7 @@ Host → AT+DISC=0
 
 **Parameters**:
 - `idx`: Device index (0-7)
-- `handle`: Characteristic value handle (hex, e.g., 0x000E hoặc 000E)
+- `handle`: Characteristic value handle (hex, e.g., 0x000E or 000E)
 - `data`: Hex data string (e.g., 01020304, max 64 bytes)
 
 **Responses**:
@@ -477,9 +478,9 @@ Host → AT+NOTIFY=0,0x000F,0
 ```
 
 **Notes**:
-- CCCD handle thường là characteristic handle + 1
-- Notifications arrive asynchronously khi có data
-- Có thể enable notifications cho multiple characteristics
+- CCCD handle typically = characteristic handle + 1
+- Notifications arrive asynchronously when data available
+- Can enable notifications for multiple characteristics
 
 ---
 
@@ -487,7 +488,7 @@ Host → AT+NOTIFY=0,0x000F,0
 
 ### Step 1: Hardware Setup
 
-1. Flash STM32WB55 với BLE Copro Wireless Binary:
+1. Flash STM32WB55 with BLE Copro Wireless Binary:
    ```bash
    STM32_Programmer_CLI -c port=SWD -fwupgrade stm32wb5x_BLE_Stack_full_fw.bin
    ```
@@ -498,14 +499,14 @@ Host → AT+NOTIFY=0,0x000F,0
    # or using STM32CubeIDE: Run > Debug As > STM32 MCU Debugging
    ```
 
-3. Kết nối UART:
-   - TX (PA2) → RX của host
-   - RX (PA3) → TX của host
+3. Connect UART:
+   - TX (PA2) → RX of host
+   - RX (PA3) → TX of host
    - GND → GND
    - Baud rate: 921600, 8N1
 
-4. Kết nối USB (optional for debug):
-   - USB cable vào ST-Link connector
+4. Connect USB (optional for debug):
+   - USB cable to ST-Link connector
 
 ### Step 2: Test Connection
 
@@ -579,7 +580,7 @@ Project/
 │           └── module_execute.c
 ```
 
-**2. Update CMakeLists.txt (nếu dùng CMake):**
+**2. Update CMakeLists.txt (if using CMake):**
 
 ```cmake
 file(GLOB_RECURSE GATEWAY_SOURCES "App/BLE_Gateway/Src/*.c")
@@ -791,7 +792,7 @@ OK
 
 | Module | Responsibility | Size |
 |--------|----------------|------|
-| `module_execute.c` | Init và sequencer task registration | ~200 LOC |
+| `module_execute.c` | Init and sequencer task registration | ~200 LOC |
 | `at_command.c` | UART RX/TX, AT parsing, command dispatch | ~800 LOC |
 | `ble_connection.c` | Scan, connect, disconnect, state management | ~300 LOC |
 | `ble_device_manager.c` | Device list, MAC tracking, name storage | ~200 LOC |
@@ -814,8 +815,8 @@ OK
 
 **Solutions**:
 1. Check USB CDC debug output for errors
-2. Verify `module_ble_init()` được gọi trong `main()`
-3. Test với `AT` command trước
+2. Verify `module_ble_init()` is called in `main()`
+3. Test with `AT` command first
 4. Check line terminator (`\r\n`)
 
 ---
@@ -829,9 +830,9 @@ OK
 
 **Solutions**:
 1. Increase scan duration: `AT+SCAN=10000`
-2. Verify BLE devices đang advertise (dùng phone app)
+2. Verify BLE devices are advertising (use phone app)
 3. Check USB CDC for scan start/stop events
-4. Reset board và retry
+4. Reset board and retry
 
 ---
 
@@ -843,9 +844,9 @@ OK
 - Wrong MAC address
 
 **Solutions**:
-1. Run `AT+SCAN` trước khi connect
-2. Verify MAC address với `AT+LIST`
-3. Don't run `AT+CLEAR` giữa scan và connect
+1. Run `AT+SCAN` before connecting
+2. Verify MAC address with `AT+LIST`
+3. Don't run `AT+CLEAR` between scan and connect
 
 ---
 
@@ -859,7 +860,7 @@ OK
 **Solutions**:
 1. Move device closer (RSSI > -70dBm)
 2. Verify device accepts connections
-3. Wait 2-3 seconds giữa connection attempts
+3. Wait 2-3 seconds between connection attempts
 4. Check for `+CONN_ERROR` response
 
 ---
@@ -887,8 +888,21 @@ OK
 
 **Solutions**:
 1. Enable CCCD: `AT+NOTIFY=<idx>,<cccd_handle>,1`
-2. CCCD handle thường = char_handle + 1
-3. Verify char properties support notification (từ `AT+DISC`)
+2. CCCD handle typically = char_handle + 1
+3. Verify char properties support notification (from `AT+DISC`)
+
+---
+
+### Problem: Devices not reported in subsequent scans
+
+**Causes**:
+- Scan flag not reset between scan sessions
+- Device manager not clearing report flags
+
+**Solutions**:
+1. Each `AT+SCAN` command automatically resets reporting flags
+2. Devices will be reported again in new scan session
+3. Use `AT+CLEAR` to completely clear device list if needed
 
 ---
 
