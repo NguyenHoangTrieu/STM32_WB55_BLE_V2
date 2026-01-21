@@ -24,7 +24,6 @@ STM32_WB55_BLE_V2/
 │       │   ├── ble_connection.h
 │       │   ├── ble_gatt_client.h       [OPTIMIZED - write/notify only]
 │       │   ├── ble_event_handler.h
-│       │   ├── circular_buffer.h
 │       │   ├── debug_trace.h
 │       │   └── module_execute.h        [NEW - Application entry point]
 │       └── Src/
@@ -33,7 +32,6 @@ STM32_WB55_BLE_V2/
 │           ├── ble_connection.c
 │           ├── ble_gatt_client.c       [OPTIMIZED - removed unused stubs]
 │           ├── ble_event_handler.c
-│           ├── circular_buffer.c
 │           ├── debug_trace.c
 │           └── module_execute.c        [NEW - Init + main loop handler]
 ├── Inc/                       [STM32CubeMX generated]
