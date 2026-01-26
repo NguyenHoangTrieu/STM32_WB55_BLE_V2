@@ -1,249 +1,472 @@
-# STM32WB BLE Gateway - Thực hiện (Implementation Plan)
-
-## Ngày tạo: 13/01/2025 | Cập nhật: 19/01/2026
-**Mục tiêu**: Xây dựng Gateway trung tâm (Hub) quản lý nhiều thiết bị BLE thông qua lệnh AT
-**Status**: ✅ Phase 1 Complete + Optimized
+# STM32WB BLE Gateway - Implementation Plan
 
 ---
 
-## 🔧 KIẾN TRÚC HỆ THỐNG
+## Table of Contents
 
-### Communication Channels:
-- **LPUART1** (921600 baud): AT Command interface (RX/TX data only)
-- **USB CDC**: Debug output via `printf()` - NO AT COMMANDS
-- **BLE Stack**: Multi-device GATT Client operations
+1. [System Architecture](#system-architecture)
+2. [STM32_WPAN API Analysis](#stm32_wpan-api-analysis)
+3. [Current Implementation Status](#current-implementation-status)
+4. [Required Implementations](#required-implementations)
+5. [Implementation Workflow](#implementation-workflow)
+6. [AT Command Protocol](#at-command-protocol)
+7. [Directory Structure](#directory-structure)
+8. [API Usage Examples](#api-usage-examples)
+9. [Error Handling](#error-handling)
+10. [Memory Considerations](#memory-considerations)
+11. [Testing Checklist](#testing-checklist)
 
-### Folder Structure:
+---
+
+## System Architecture
+
+### Overview
+
+This project implements a BLE Central Gateway (Hub) that manages multiple BLE devices through an AT command interface. The system supports up to 8 simultaneous BLE connections with full GATT client capabilities.
+
+**Current Status:** Phase 1 Complete + Optimized
+
+### Communication Channels
+
+- **LPUART1** (921600 baud) - AT Command interface for RX/TX data only
+- **USB CDC** - Debug output via printf() - NO AT COMMANDS
+- **BLE Stack** - Multi-device GATT Client operations
+
+### Folder Structure
+
 ```
 STM32_WB55_BLE_V2/
 ├── App/
-│   └── BLE_Gateway/          [NEW - All custom modules here]
+│   └── BLE_Gateway/          [Custom application modules]
 │       ├── Inc/
 │       │   ├── at_command.h
 │       │   ├── ble_device_manager.h
 │       │   ├── ble_connection.h
-│       │   ├── ble_gatt_client.h       [OPTIMIZED - write/notify only]
+│       │   ├── ble_gatt_client.h       [Optimized - write/notify only]
 │       │   ├── ble_event_handler.h
 │       │   ├── debug_trace.h
-│       │   └── module_execute.h        [NEW - Application entry point]
+│       │   └── module_execute.h        [Application entry point]
 │       └── Src/
 │           ├── at_command.c
 │           ├── ble_device_manager.c
 │           ├── ble_connection.c
-│           ├── ble_gatt_client.c       [OPTIMIZED - removed unused stubs]
+│           ├── ble_gatt_client.c       [Optimized - removed unused code]
 │           ├── ble_event_handler.c
 │           ├── debug_trace.c
-│           └── module_execute.c        [NEW - Init + main loop handler]
+│           └── module_execute.c        [Init + main loop handler]
 ├── Inc/                       [STM32CubeMX generated]
 │   ├── app_ble.h
 │   ├── p2p_client_app.h
 │   └── main.h
 ├── Src/                       [STM32CubeMX generated]
-│   ├── app_ble.c              [MODIFIED - integrate Gateway modules]
-│   ├── p2p_client_app.c       [MODIFIED - scan callback]
-│   ├── main.c                 [MODIFIED - USB CDC printf]
-│   └── usbd_cdc_if.c          [MODIFIED - CDC data callback]
-└── CMakeLists.txt             [MODIFIED - add App/BLE_Gateway sources]
+│   ├── app_ble.c              [Modified - integrate Gateway modules]
+│   ├── p2p_client_app.c       [Modified - scan callback]
+│   ├── main.c                 [Modified - USB CDC printf]
+│   └── usbd_cdc_if.c          [Modified - CDC data callback]
+└── CMakeLists.txt             [Modified - add App/BLE_Gateway sources]
 ```
 
 ---
 
-## I. PHÂN TÍCH API STM32_WPAN
+## STM32_WPAN API Analysis
 
-### 1. **HCI Layer APIs** (ble_hci_le.h)
-Các hàm điều khiển mức HCI:
+### 1. HCI Layer APIs (ble_hci_le.h)
+
+Low-level Host Controller Interface functions.
 
 #### A. Connection Management
-- `hci_disconnect(conn_handle, reason)` - Ngắt kết nối
-- `hci_read_remote_version_information(conn_handle)` - Đọc thông tin phiên bản thiết bị
-- `hci_read_transmit_power_level(conn_handle, type, &power)` - Đọc mức công suất
 
-#### B. Controller Configuration  
-- `hci_reset()` - Reset BLE controller
-- `hci_set_event_mask(event_mask)` - Cấu hình event cần nhận
-- `hci_set_controller_to_host_flow_control()` - Điều khiển flow control
+```c
+// Disconnect from device
+tBleStatus hci_disconnect(uint16_t conn_handle, uint8_t reason);
 
-#### C. LE Scanning & Connection (hci_le_* functions)
-**CRITICAL FUNCTIONS**:
-- `hci_le_set_scan_parameters()` - Cấu hình scan (type, interval, window)
-- `hci_le_set_scan_enable(enable, filter_dup)` - Bắt đầu/dừng scan
-- `hci_le_create_connection()` - Khởi tạo kết nối tới device
-- `hci_le_create_connection_cancel()` - Hủy quá trình kết nối
-- `hci_le_set_default_phy()` - Cấu hình PHY (1M, 2M, Coded)
-- `hci_le_set_default_periodic_advertising()` - Cấu hình periodic advertising
+// Read remote device version
+tBleStatus hci_read_remote_version_information(uint16_t conn_handle);
 
-### 2. **GAP APIs** (ble_gap_aci.h)
-Các hàm Generic Access Profile:
+// Read transmit power level
+tBleStatus hci_read_transmit_power_level(uint16_t conn_handle, 
+                                         uint8_t type, 
+                                         int8_t *power);
+```
 
-#### A. Discovery/Advertising (Peripheral role)
-- `aci_gap_set_non_discoverable()` - Tắt quảng cáo
-- `aci_gap_set_limited_discoverable()` - Chế độ discoverable giới hạn
-- `aci_gap_set_discoverable()` - Chế độ discoverable tổng quát
+#### B. Controller Configuration
+
+```c
+// Reset BLE controller
+tBleStatus hci_reset(void);
+
+// Configure event mask
+tBleStatus hci_set_event_mask(uint8_t event_mask[8]);
+
+// Configure flow control
+tBleStatus hci_set_controller_to_host_flow_control(uint8_t flow_ctrl_enable);
+```
+
+#### C. LE Scanning and Connection
+
+**Critical Functions:**
+
+```c
+// Configure scan parameters
+tBleStatus hci_le_set_scan_parameters(uint8_t scan_type,
+                                      uint16_t scan_interval,
+                                      uint16_t scan_window,
+                                      uint8_t own_addr_type,
+                                      uint8_t filter_policy);
+
+// Start/stop scanning
+tBleStatus hci_le_set_scan_enable(uint8_t enable, uint8_t filter_duplicates);
+
+// Initiate connection to device
+tBleStatus hci_le_create_connection(uint16_t scan_interval,
+                                    uint16_t scan_window,
+                                    uint8_t filter_policy,
+                                    uint8_t peer_addr_type,
+                                    const uint8_t peer_addr[6],
+                                    uint8_t own_addr_type,
+                                    uint16_t conn_interval_min,
+                                    uint16_t conn_interval_max,
+                                    uint16_t conn_latency,
+                                    uint16_t supervision_timeout,
+                                    uint16_t min_ce_length,
+                                    uint16_t max_ce_length);
+
+// Cancel connection attempt
+tBleStatus hci_le_create_connection_cancel(void);
+
+// Configure PHY (1M, 2M, Coded)
+tBleStatus hci_le_set_default_phy(uint8_t all_phys,
+                                  uint8_t tx_phys,
+                                  uint8_t rx_phys);
+```
+
+### 2. GAP APIs (ble_gap_aci.h)
+
+Generic Access Profile functions for device discovery and connection.
+
+#### A. Discovery and Advertising (Peripheral role)
+
+```c
+// Disable advertising
+tBleStatus aci_gap_set_non_discoverable(void);
+
+// Limited discoverable mode
+tBleStatus aci_gap_set_limited_discoverable(uint8_t adv_type, ...);
+
+// General discoverable mode
+tBleStatus aci_gap_set_discoverable(uint8_t adv_type, ...);
+```
 
 #### B. Connection Management (Central role)
-- `aci_gap_start_procedure(proc_code, ...)` - Bắt đầu procedure (scan, connect...)
-- `aci_gap_terminate_proc(proc_code)` - Kết thúc procedure
-- `aci_gap_create_connection()` - Tạo kết nối
-- `aci_gap_terminate()` - Kết thúc kết nối
+
+```c
+// Start GAP procedure (scan, connect, etc.)
+tBleStatus aci_gap_start_procedure(uint8_t proc_code, ...);
+
+// Terminate GAP procedure
+tBleStatus aci_gap_terminate_proc(uint8_t proc_code);
+
+// Create connection
+tBleStatus aci_gap_create_connection(uint8_t init_filter_policy,
+                                     uint8_t own_addr_type,
+                                     uint8_t peer_addr_type,
+                                     const uint8_t peer_addr[6],
+                                     ...);
+
+// Terminate connection
+tBleStatus aci_gap_terminate(uint16_t conn_handle, uint8_t reason);
+```
 
 #### C. Device Information
-- `aci_gap_get_bdaddr(addr_type, &addr)` - Lấy địa chỉ BLE
-- `aci_gap_update_adv_data()` - Cập nhật advertising data
-- `aci_gap_get_security_level()` - Lấy mức bảo mật
 
-### 3. **GATT APIs** (ble_gatt_aci.h)
+```c
+// Get BLE address
+tBleStatus aci_gap_get_bdaddr(uint8_t *addr_type, uint8_t addr[6]);
+
+// Update advertising data
+tBleStatus aci_gap_update_adv_data(uint8_t adv_data_len, 
+                                   const uint8_t *adv_data);
+
+// Get security level
+tBleStatus aci_gap_get_security_level(uint16_t conn_handle, 
+                                      uint8_t *security_level);
+```
+
+### 3. GATT APIs (ble_gatt_aci.h)
 
 #### A. GATT Initialization
-- `aci_gatt_init()` - **MUST CALL FIRST** - Khởi tạo GATT layer
+
+```c
+// MUST CALL FIRST - Initialize GATT layer
+tBleStatus aci_gatt_init(void);
+```
 
 #### B. Service Management (Server)
-- `aci_gatt_add_service()` - Thêm service vào server
-- `aci_gatt_add_char()` - Thêm characteristic vào service
-- `aci_gatt_add_char_desc()` - Thêm descriptor
-- `aci_gatt_del_char()` - Xóa characteristic
-- `aci_gatt_del_service()` - Xóa service
+
+```c
+// Add service to server
+tBleStatus aci_gatt_add_service(uint8_t service_uuid_type,
+                                const uint8_t *service_uuid,
+                                uint8_t service_type,
+                                uint8_t max_attr_records,
+                                uint16_t *service_handle);
+
+// Add characteristic to service
+tBleStatus aci_gatt_add_char(uint16_t service_handle,
+                             uint8_t char_uuid_type,
+                             const uint8_t *char_uuid,
+                             uint8_t char_value_len,
+                             uint8_t char_properties,
+                             uint8_t sec_permissions,
+                             uint8_t gatt_evt_mask,
+                             uint8_t enc_key_size,
+                             uint8_t is_variable,
+                             uint16_t *char_handle);
+
+// Delete characteristic
+tBleStatus aci_gatt_del_char(uint16_t service_handle, 
+                             uint16_t char_handle);
+
+// Delete service
+tBleStatus aci_gatt_del_service(uint16_t service_handle);
+```
 
 #### C. Characteristic Read/Write (Server)
-- `aci_gatt_update_char_value()` - Cập nhật giá trị characteristic
-- `aci_gatt_set_event_mask()` - Cấu hình event notification
 
-#### D. GATT Client Operations (Central role - CẬP CHÍ QUAN TRỌNG)
-- `aci_gattc_read_char_value(conn_handle, char_handle)` - Đọc giá trị characteristic
-- `aci_gattc_write_char_value(conn_handle, char_handle, value, len)` - Ghi giá trị
-- `aci_gattc_write_char_desc(conn_handle, handle, value)` - Ghi descriptor (enable notify)
-- `aci_gattc_discover_all_services(conn_handle)` - Discover tất cả services
-- `aci_gattc_discover_primary_services(conn_handle, uuid_type, uuid)` - Discover service cụ thể
-- `aci_gattc_discover_all_chars(conn_handle, start_handle, end_handle)` - Discover characteristics
-- `aci_gattc_discover_all_char_desc(conn_handle, start_handle, end_handle)` - Discover descriptors
+```c
+// Update characteristic value
+tBleStatus aci_gatt_update_char_value(uint16_t service_handle,
+                                      uint16_t char_handle,
+                                      uint8_t val_offset,
+                                      uint8_t char_value_len,
+                                      const uint8_t *char_value);
 
-### 4. **HCI Events** (ble_events.h)
+// Configure event mask
+tBleStatus aci_gatt_set_event_mask(uint32_t event_mask);
+```
+
+#### D. GATT Client Operations (Central role - CRITICAL)
+
+```c
+// Read characteristic value
+tBleStatus aci_gattc_read_char_value(uint16_t conn_handle, 
+                                     uint16_t char_handle);
+
+// Write characteristic value
+tBleStatus aci_gattc_write_char_value(uint16_t conn_handle,
+                                      uint16_t char_handle,
+                                      uint8_t value_len,
+                                      const uint8_t *value);
+
+// Write descriptor (enable notifications)
+tBleStatus aci_gattc_write_char_desc(uint16_t conn_handle,
+                                     uint16_t char_handle,
+                                     uint8_t value_len,
+                                     const uint8_t *value);
+
+// Discover all services
+tBleStatus aci_gattc_discover_all_services(uint16_t conn_handle);
+
+// Discover specific primary service by UUID
+tBleStatus aci_gattc_discover_primary_services(uint16_t conn_handle,
+                                               uint8_t uuid_type,
+                                               const uint8_t *uuid);
+
+// Discover all characteristics in service
+tBleStatus aci_gattc_discover_all_chars(uint16_t conn_handle,
+                                        uint16_t start_handle,
+                                        uint16_t end_handle);
+
+// Discover all characteristic descriptors
+tBleStatus aci_gattc_discover_all_char_desc(uint16_t conn_handle,
+                                            uint16_t start_handle,
+                                            uint16_t end_handle);
+```
+
+### 4. HCI Events (ble_events.h)
 
 #### A. Connection Events
-- `hci_le_connection_complete_event()` - Device kết nối thành công
-- `hci_disconnection_complete_event()` - Device ngắt kết nối
-- `hci_le_enhanced_connection_complete_event()` - Connection complete (enhanced)
+
+```c
+// Device connected successfully
+void hci_le_connection_complete_event(uint8_t status,
+                                      uint16_t conn_handle,
+                                      uint8_t role,
+                                      uint8_t peer_addr_type,
+                                      const uint8_t peer_addr[6],
+                                      uint16_t conn_interval,
+                                      uint16_t conn_latency,
+                                      uint16_t supervision_timeout,
+                                      uint8_t master_clock_accuracy);
+
+// Device disconnected
+void hci_disconnection_complete_event(uint8_t status,
+                                      uint16_t conn_handle,
+                                      uint8_t reason);
+
+// Enhanced connection complete (BLE 4.2+)
+void hci_le_enhanced_connection_complete_event(...);
+```
 
 #### B. Scanning Events
-- `hci_le_advertising_report_event()` - **CRITICAL** - Nhận advertising packet khi scan
-  - Trích xuất MAC address từ `report->address`
-  - Lấy RSSI từ `report->rssi`
-  - Lấy advertising data từ `report->data`
+
+```c
+// CRITICAL - Receive advertising packet during scan
+void hci_le_advertising_report_event(uint8_t num_reports,
+                                     const hci_le_advertising_report_event_t *reports);
+// Extract:
+//   - MAC address from reports->address
+//   - RSSI from reports->rssi
+//   - Advertising data from reports->data
+```
 
 #### C. GATT Events
-- `hci_le_gattc_notification_event()` - Nhận notification từ remote device
-- `hci_le_gattc_read_response()` - Phản hồi read characteristic
-- `hci_le_gattc_write_response()` - Phản hồi write characteristic
-- `hci_le_gattc_disc_read_char_by_uuid_resp()` - Phản hồi discover services
+
+```c
+// Receive notification from remote device
+void hci_le_gattc_notification_event(uint16_t conn_handle,
+                                     uint16_t event_data_len,
+                                     const uint8_t *event_data);
+
+// Read characteristic response
+void hci_le_gattc_read_response(uint16_t conn_handle,
+                                uint16_t event_data_len,
+                                const uint8_t *event_data);
+
+// Write characteristic response
+void hci_le_gattc_write_response(uint16_t conn_handle);
+
+// Discover services response
+void hci_le_gattc_disc_read_char_by_uuid_resp(uint16_t conn_handle,
+                                              uint16_t event_data_len,
+                                              const uint8_t *event_data);
+```
 
 #### D. Encryption Events
-- `hci_encryption_change_event()` - Encryption bật/tắt
-- `hci_encryption_key_refresh_complete_event()` - Key refresh hoàn tất
+
+```c
+// Encryption state changed
+void hci_encryption_change_event(uint8_t status,
+                                 uint16_t conn_handle,
+                                 uint8_t encryption_enabled);
+
+// Encryption key refreshed
+void hci_encryption_key_refresh_complete_event(uint8_t status,
+                                               uint16_t conn_handle);
+```
 
 ---
 
-## II. CẤU TRÚC DỮ LIỆU HIỆN CÓ
+## Current Implementation Status
 
-### File hiện tại:
+### Existing Files
+
 ```
 Inc/
   app_ble.h          - BLE application header
   p2p_client_app.h   - P2P Client template
   
 Src/
-  app_ble.c          - BLE initialization & callbacks
+  app_ble.c          - BLE initialization and callbacks
   p2p_client_app.c   - P2P Client state machine
   main.c             - Main loop
 ```
 
-### Enums hiện có:
-```c
-APP_BLE_ConnStatus_t {
-  APP_BLE_IDLE,
-  APP_BLE_FAST_ADV,
-  APP_BLE_LP_ADV,
-  APP_BLE_SCAN,
-  APP_BLE_LP_CONNECTING,
-  APP_BLE_CONNECTED_SERVER,
-  APP_BLE_CONNECTED_CLIENT,
-  APP_BLE_DISCOVER_SERVICES,
-  APP_BLE_DISCOVER_CHARACS,
-  APP_BLE_DISCOVER_WRITE_DESC,
-  APP_BLE_DISCOVER_NOTIFICATION_CHAR_DESC,
-  APP_BLE_ENABLE_NOTIFICATION_DESC,
-  APP_BLE_DISABLE_NOTIFICATION_DESC
-}
+### Existing Enums
 
-P2PC_APP_Opcode_Notification_evt_t {
-  PEER_CONN_HANDLE_EVT,
-  PEER_DISCON_HANDLE_EVT,
-}
+```c
+// BLE connection states
+typedef enum {
+    APP_BLE_IDLE,
+    APP_BLE_FAST_ADV,
+    APP_BLE_LP_ADV,
+    APP_BLE_SCAN,
+    APP_BLE_LP_CONNECTING,
+    APP_BLE_CONNECTED_SERVER,
+    APP_BLE_CONNECTED_CLIENT,
+    APP_BLE_DISCOVER_SERVICES,
+    APP_BLE_DISCOVER_CHARACS,
+    APP_BLE_DISCOVER_WRITE_DESC,
+    APP_BLE_DISCOVER_NOTIFICATION_CHAR_DESC,
+    APP_BLE_ENABLE_NOTIFICATION_DESC,
+    APP_BLE_DISABLE_NOTIFICATION_DESC
+} APP_BLE_ConnStatus_t;
+
+// P2P Client event opcodes
+typedef enum {
+    PEER_CONN_HANDLE_EVT,
+    PEER_DISCON_HANDLE_EVT
+} P2PC_APP_Opcode_Notification_evt_t;
 ```
 
 ---
 
-## III. THIẾU SÓT HIỆN TẠI & CẦN IMPLEMENT
+## Required Implementations
 
-### **TIER 1: CRITICAL (Phải làm ngay)**
+### TIER 1: CRITICAL (Must Implement Immediately)
 
 #### 1.1 UART AT Command Parser Module
-**File**: `App/BLE_Gateway/Inc/at_command.h` + `App/BLE_Gateway/Src/at_command.c`
 
-**CRITICAL**: UART chỉ dùng cho AT command, KHÔNG dùng printf!
+**Files:** `App/BLE_Gateway/Inc/at_command.h` + `App/BLE_Gateway/Src/at_command.c`
 
-**API cần:**
+**CRITICAL:** UART is only for AT commands, NOT for printf debug output!
+
+**Required API:**
+
 ```c
 // AT Command Handler
 void AT_Command_Init(void);
 void AT_Command_Process(const char *cmd_line);
 void AT_Command_UART_IRQHandler(void);
 
-// Internal functions
+// Command handlers
 int AT_SCAN_Handler(void);                          // AT+SCAN
 int AT_CONNECT_Handler(const uint8_t *mac);        // AT+CONNECT=XX:XX:XX:XX:XX:XX
 int AT_DISCONNECT_Handler(uint8_t conn_idx);       // AT+DISCONNECT=<idx>
 int AT_LIST_Handler(void);                          // AT+LIST (list connected devices)
 int AT_READ_Handler(uint8_t conn_idx, uint16_t handle);  // AT+READ=<idx>,<handle>
-int AT_WRITE_Handler(uint8_t conn_idx, uint16_t handle, const uint8_t *data); // AT+WRITE=<idx>,<handle>,<data>
-int AT_NOTIFY_Handler(uint8_t conn_idx, uint16_t handle, uint8_t enable); // AT+NOTIFY=<idx>,<handle>,<en>
+int AT_WRITE_Handler(uint8_t conn_idx, uint16_t handle, const uint8_t *data); // AT+WRITE
+int AT_NOTIFY_Handler(uint8_t conn_idx, uint16_t handle, uint8_t enable); // AT+NOTIFY
 
 // UART TX only for responses (NO printf here!)
 void UART_SendATResponse(const char *fmt, ...);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 ```
 
-**Chức năng:**
-- Parse chuỗi AT command từ LPUART1
-- Validate syntax
-- Trả về OK/ERROR qua UART TX
-- Sử dụng circular buffer cho UART RX
-- **KHÔNG** sử dụng printf (chỉ dùng HAL_UART_Transmit)
-
----
+**Features:**
+- Parse AT command strings from LPUART1
+- Validate command syntax
+- Return OK/ERROR via UART TX
+- Use circular buffer for UART RX
+- NO printf usage (only HAL_UART_Transmit)
 
 #### 1.2 BLE Device Manager Module
-**File**: `App/BLE_Gateway/Inc/ble_device_manager.h` + `App/BLE_Gateway/Src/ble_device_manager.c`
 
-**Cấu trúc dữ liệu:**
+**Files:** `App/BLE_Gateway/Inc/ble_device_manager.h` + `App/BLE_Gateway/Src/ble_device_manager.c`
+
+**Data Structures:**
+
 ```c
 typedef struct {
     uint8_t   mac_addr[6];              // MAC address
     uint16_t  conn_handle;              // Connection handle (-1 if not connected)
     uint8_t   is_connected;             // Connection status
     int8_t    rssi;                     // Last RSSI value
-    uint8_t   service_count;            // Số service discovered
-    // ... service & characteristic data
+    uint8_t   service_count;            // Number of discovered services
+    // Service and characteristic data...
 } BLE_Device_t;
 
 // Manager structure
 typedef struct {
     BLE_Device_t devices[8];            // Max 8 devices
-    uint8_t      active_count;          // Số device hiện có
-    uint8_t      scan_active;           // Scan đang chạy?
+    uint8_t      active_count;          // Current device count
+    uint8_t      scan_active;           // Is scan running?
     uint16_t     scan_duration;         // Duration in ms
 } BLE_DeviceManager_t;
 ```
 
-**API cần:**
+**Required API:**
+
 ```c
 void BLE_DeviceManager_Init(void);
 void BLE_DeviceManager_AddDevice(const uint8_t *mac, int8_t rssi);
@@ -255,19 +478,19 @@ BLE_Device_t* BLE_DeviceManager_GetDevice(int idx);
 void BLE_DeviceManager_Clear(void);
 ```
 
----
+#### 1.3 Modify Scan Callback (P2P Client)
 
-#### 1.3 Sửa Scan Callback (P2P Client)
-**File**: `Src/p2p_client_app.c` - Function `hci_le_advertising_report_event()`
+**File:** `Src/p2p_client_app.c` - Function `hci_le_advertising_report_event()`
 
-**Thay đổi:**
+**Change from auto-connect to scan-only:**
+
 ```c
-// TRƯỚC (auto-connect):
+// BEFORE (auto-connect):
 // void hci_le_advertising_report_event(...) {
 //     aci_gap_create_connection(...);  // Auto connect
 // }
 
-// SAU (in MAC, không auto-connect):
+// AFTER (scan only, no auto-connect):
 void hci_le_advertising_report_event(uint8_t Num_Reports,
                                      const hci_le_advertising_report_event_t *reports) {
     for(int i = 0; i < Num_Reports; i++) {
@@ -280,19 +503,19 @@ void hci_le_advertising_report_event(uint8_t Num_Reports,
         // Add to device manager
         BLE_DeviceManager_AddDevice(mac, rssi);
         
-        // Print to UART
+        // Print to UART (AT response)
         printf("+SCAN_DEVICE:%02X:%02X:%02X:%02X:%02X:%02X,RSSI:%d\r\n",
                mac[5], mac[4], mac[3], mac[2], mac[1], mac[0], rssi);
     }
 }
 ```
 
----
-
 #### 1.4 Multi-Device Connection Manager
-**File**: `App/BLE_Gateway/Inc/ble_connection.h` + `App/BLE_Gateway/Src/ble_connection.c`
 
-**Chức năng:**
+**Files:** `App/BLE_Gateway/Inc/ble_connection.h` + `App/BLE_Gateway/Src/ble_connection.c`
+
+**Features:**
+
 ```c
 // Connection state tracking
 typedef enum {
@@ -300,7 +523,7 @@ typedef enum {
     CONN_STATE_CONNECTING,
     CONN_STATE_CONNECTED,
     CONN_STATE_DISCOVERING,
-    CONN_STATE_DISCONNECTING,
+    CONN_STATE_DISCONNECTING
 } BLE_ConnectionState_t;
 
 // API
@@ -310,14 +533,14 @@ int  BLE_Connection_SetState(uint16_t conn_handle, BLE_ConnectionState_t state);
 BLE_ConnectionState_t BLE_Connection_GetState(uint16_t conn_handle);
 ```
 
----
+#### 1.5 GATT Client Write and Notify (OPTIMIZED)
 
-#### 1.5 GATT Client Write & Notify (OPTIMIZED)
-**File**: `App/BLE_Gateway/Inc/ble_gatt_client.h` + `App/BLE_Gateway/Src/ble_gatt_client.c`
+**Files:** `App/BLE_Gateway/Inc/ble_gatt_client.h` + `App/BLE_Gateway/Src/ble_gatt_client.c`
 
-**Note**: Discovery và read operations đã được xóa vì chưa được implement và không được sử dụng.
+**Note:** Discovery and read operations have been removed as they were not implemented and not used.
 
 **API (Simplified):**
+
 ```c
 // Write/Notify only - actively used operations
 void BLE_GATT_Init(void);
@@ -327,33 +550,34 @@ int BLE_GATT_EnableNotification(uint16_t conn_handle, uint16_t desc_handle);
 int BLE_GATT_DisableNotification(uint16_t conn_handle, uint16_t desc_handle);
 ```
 
----
-
 #### 1.6 Application Executor (NEW)
-**File**: `App/BLE_Gateway/Inc/module_execute.h` + `App/BLE_Gateway/Src/module_execute.c`
 
-**Mục đích:** Đơn giản hóa việc integrate vào main.c - chỉ cần 2 hàm
+**Files:** `App/BLE_Gateway/Inc/module_execute.h` + `App/BLE_Gateway/Src/module_execute.c`
+
+**Purpose:** Simplify integration into main.c - only 2 functions needed
 
 **API:**
+
 ```c
 void module_ble_init(void);   // Call once during initialization
 void module_ble_start(void);  // Call in main loop to process AT commands
 ```
 
 **Implementation:**
-- Khởi tạo tất cả modules theo đúng thứ tự
-- Tự động đăng ký callbacks
-- Xử lý AT commands từ circular buffer
-- Single entry point - dễ maintain
+- Initialize all modules in correct order
+- Automatically register callbacks
+- Process AT commands from circular buffer
+- Single entry point - easy to maintain
 
 ---
 
-### **TIER 2: HIGH PRIORITY (Đã hoàn thành)**
+### TIER 2: HIGH PRIORITY (Completed)
 
-#### 2.1 BLE Event Dispatcher ✅
-**File**: `App/BLE_Gateway/Inc/ble_event_handler.h` + `App/BLE_Gateway/Src/ble_event_handler.c`
+#### 2.1 BLE Event Dispatcher
 
-**Mục đích:** Centralize tất cả HCI event callbacks
+**Files:** `App/BLE_Gateway/Inc/ble_event_handler.h` + `App/BLE_Gateway/Src/ble_event_handler.c`
+
+**Purpose:** Centralize all HCI event callbacks
 
 ```c
 // Event callback types
@@ -361,7 +585,6 @@ typedef void (*BLE_ConnectionCompleteCallback_t)(uint16_t conn_handle, const uin
 typedef void (*BLE_DisconnectionCompleteCallback_t)(uint16_t conn_handle, uint8_t reason);
 typedef void (*BLE_GATTCNotificationCallback_t)(uint16_t conn_handle, uint16_t handle, 
                                                  const uint8_t *data, uint16_t len);
-// ...
 
 void BLE_EventHandler_Init(void);
 void BLE_EventHandler_RegisterConnectionCallback(BLE_ConnectionCompleteCallback_t cb);
@@ -369,10 +592,9 @@ void BLE_EventHandler_RegisterDisconnectionCallback(BLE_DisconnectionCompleteCal
 void BLE_EventHandler_RegisterNotificationCallback(BLE_GATTCNotificationCallback_t cb);
 ```
 
----
+#### 2.2 Circular Buffer for UART RX
 
-#### 2.2 Circular Buffer for UART RX ✅
-**File**: `App/BLE_Gateway/Inc/circular_buffer.h` + `App/BLE_Gateway/Src/circular_buffer.c`
+**Files:** `App/BLE_Gateway/Inc/circular_buffer.h` + `App/BLE_Gateway/Src/circular_buffer.c`
 
 ```c
 typedef struct {
@@ -388,12 +610,11 @@ int  CircularBuffer_Get(CircularBuffer_t *cb, uint8_t *data);
 int  CircularBuffer_GetLine(CircularBuffer_t *cb, char *line, uint16_t max_len);
 ```
 
----
-
 #### 2.3 Debug Trace Module (USB CDC Only!)
-**File**: `App/BLE_Gateway/Inc/debug_trace.h` + `App/BLE_Gateway/Src/debug_trace.c`
 
-**CRITICAL**: Debug chỉ qua USB CDC (printf), không qua UART!
+**Files:** `App/BLE_Gateway/Inc/debug_trace.h` + `App/BLE_Gateway/Src/debug_trace.c`
+
+**CRITICAL:** Debug output ONLY via USB CDC (printf), not via UART!
 
 ```c
 void DEBUG_PRINT(const char *fmt, ...);              // Uses printf() -> USB CDC
@@ -405,59 +626,66 @@ void DEBUG_PrintDeviceList(void);
 
 ---
 
-### **TIER 3: MEDIUM PRIORITY (Có thể làm sau)**
+### TIER 3: MEDIUM PRIORITY (Can Implement Later)
 
-#### 3.1 Configuration & Persistent Storage
-- Lưu danh sách thiết bị yêu thích vào EEPROM/Flash
-- Cấu hình scan parameters
-- Cấu hình connection timeout
+#### 3.1 Configuration and Persistent Storage
+
+- Save favorite device list to EEPROM/Flash
+- Configure scan parameters
+- Configure connection timeout
 
 #### 3.2 State Machine for Multi-Connection
-- Xử lý trạng thái cho 8 kết nối đồng thời
-- Handle priority khi scan/connect nhiều device
 
-#### 3.3 Security & Encryption
+- Handle state for 8 simultaneous connections
+- Handle priority when scanning/connecting multiple devices
+
+#### 3.3 Security and Encryption
+
 - Pairing management
 - CCCD (Client Characteristic Configuration Descriptor) handling
 - Encryption enable/disable
 
 ---
 
-## IV. WORKFLOW IMPLEMENTATION
+## Implementation Workflow
 
-### **Phase 1: Foundation (Tuần 1)**
-1. ✅ Tạo folder `App/BLE_Gateway/Inc` và `App/BLE_Gateway/Src`
-2. ✅ Redirect printf() → USB CDC (sửa `_write()` trong main.c)
-3. ✅ Tạo `circular_buffer` module
-4. ✅ Tạo `at_command` module với parser cơ bản (chỉ UART RX/TX)
-5. ✅ Tạo `ble_device_manager` module
-6. ✅ Sửa `hci_le_advertising_report_event()` - tắt auto-connect
-7. ✅ Bật LPUART1 interrupt trong NVIC (CubeMX)
-8. ✅ Tăng HeapSize & StackSize (CubeMX)
-9. ✅ Update CMakeLists.txt để include App/BLE_Gateway sources
+### Phase 1: Foundation (Week 1) - COMPLETED
 
-### **Phase 2: Core BLE Functions (Tuần 2)**
-1. ✅ Implement `BLE_Connection_CreateConnection()` - GAP connect
-2. ✅ Implement `BLE_Connection_TerminateConnection()` - GAP disconnect
-3. ✅ Sửa event handler cho connection complete/disconnect
-4. ✅ Test AT+SCAN → Scan & print devices
-5. ✅ Test AT+CONNECT=XX:XX:XX:XX:XX:XX → Connect to device
+1. Created folder structure `App/BLE_Gateway/Inc` and `App/BLE_Gateway/Src`
+2. Redirected printf() to USB CDC (modified _write() in main.c)
+3. Created circular_buffer module
+4. Created at_command module with basic parser (UART RX/TX only)
+5. Created ble_device_manager module
+6. Modified hci_le_advertising_report_event() - disabled auto-connect
+7. Enabled LPUART1 interrupt in NVIC (CubeMX)
+8. Increased HeapSize and StackSize (CubeMX)
+9. Updated CMakeLists.txt to include App/BLE_Gateway sources
 
-### **Phase 3: GATT Client Operations (Tuần 3)**
-1. ✅ Implement discovery functions
-2. ✅ Implement read/write characteristic functions
-3. ✅ Implement notification enable/disable
-4. ✅ Test AT+READ, AT+WRITE, AT+NOTIFY commands
+### Phase 2: Core BLE Functions (Week 2) - COMPLETED
 
-### **Phase 4: Testing & Optimization (Tuần 4)**
-1. ✅ Multi-device stress test (8 devices)
-2. ✅ AT command robustness testing
-3. ✅ Memory profiling & optimization
-4. ✅ Error handling & recovery
+1. Implemented BLE_Connection_CreateConnection() - GAP connect
+2. Implemented BLE_Connection_TerminateConnection() - GAP disconnect
+3. Modified event handlers for connection complete/disconnect
+4. Tested AT+SCAN - Scan and print devices
+5. Tested AT+CONNECT=XX:XX:XX:XX:XX:XX - Connect to device
+
+### Phase 3: GATT Client Operations (Week 3) - COMPLETED
+
+1. Implemented discovery functions
+2. Implemented read/write characteristic functions
+3. Implemented notification enable/disable
+4. Tested AT+READ, AT+WRITE, AT+NOTIFY commands
+
+### Phase 4: Testing and Optimization (Week 4) - COMPLETED
+
+1. Multi-device stress test (8 devices)
+2. AT command robustness testing
+3. Memory profiling and optimization
+4. Error handling and recovery
 
 ---
 
-## V. AT COMMAND PROTOCOL SPECIFICATION
+## AT Command Protocol
 
 ### Command Format: `AT+<CMD>=<PARAM1>,<PARAM2>...`
 
@@ -471,57 +699,58 @@ void DEBUG_PrintDeviceList(void);
 | **WRITE** | `AT+WRITE=<idx>,<handle>,<hex_data>` | `AT+WRITE=0,20,0102030405` | `OK` / `ERROR` |
 | **NOTIFY** | `AT+NOTIFY=<idx>,<handle>,<enable>` | `AT+NOTIFY=0,21,1` | `OK` / `ERROR` |
 | **DISC** | `AT+DISC=<idx>` | `AT+DISC=0` | `+DISC_SVC:handle,uuid` or `OK` |
-| **INFO** | `AT+INFO=<idx>` | `AT+INFO=0` | Device info |
+| **INFO** | `AT+INFO=<idx>` | `AT+INFO=0` | Device information |
 
 ---
 
-## VI. CẤU TRÚC THƯ MỤC SAU IMPLEMENT
+## Directory Structure
 
 ```
 STM32_WB55_BLE_V2/
 ├── App/
-│   └── BLE_Gateway/              [NEW - All custom application code]
+│   └── BLE_Gateway/              [All custom application code]
 │       ├── Inc/
-│       │   ├── at_command.h              [NEW - AT parser for LPUART1]
-│       │   ├── ble_device_manager.h      [NEW - Device list management]
-│       │   ├── ble_connection.h          [NEW - Multi-connection state]
-│       │   ├── ble_gatt_client.h         [NEW - GATT operations]
-│       │   ├── ble_event_handler.h       [NEW - BLE event callbacks]
-│       │   ├── circular_buffer.h         [NEW - UART RX buffer]
-│       │   └── debug_trace.h             [NEW - USB CDC debug only]
+│       │   ├── at_command.h              [AT parser for LPUART1]
+│       │   ├── ble_device_manager.h      [Device list management]
+│       │   ├── ble_connection.h          [Multi-connection state]
+│       │   ├── ble_gatt_client.h         [GATT operations]
+│       │   ├── ble_event_handler.h       [BLE event callbacks]
+│       │   ├── circular_buffer.h         [UART RX buffer]
+│       │   └── debug_trace.h             [USB CDC debug only]
 │       └── Src/
-│           ├── at_command.c              [NEW]
-│           ├── ble_device_manager.c      [NEW]
-│           ├── ble_connection.c          [NEW]
-│           ├── ble_gatt_client.c         [NEW]
-│           ├── ble_event_handler.c       [NEW]
-│           ├── circular_buffer.c         [NEW]
-│           └── debug_trace.c             [NEW]
+│           ├── at_command.c
+│           ├── ble_device_manager.c
+│           ├── ble_connection.c
+│           ├── ble_gatt_client.c
+│           ├── ble_event_handler.c
+│           ├── circular_buffer.c
+│           └── debug_trace.c
 ├── Inc/                          [STM32CubeMX - DO NOT EDIT manually]
 │   ├── app_ble.h
 │   ├── p2p_client_app.h
 │   ├── main.h
 │   └── usbd_cdc_if.h
 ├── Src/                          [STM32CubeMX - Edit in USER CODE sections only]
-│   ├── app_ble.c                 [MODIFIED - integrate Gateway init]
-│   ├── p2p_client_app.c          [MODIFIED - scan callback to manager]
-│   ├── main.c                    [MODIFIED - USB CDC printf redirect]
-│   ├── usbd_cdc_if.c             [MODIFIED - CDC_Receive_FS callback]
-│   └── stm32wbxx_it.c            [MODIFIED - UART interrupt]
-└── CMakeLists.txt                [MODIFIED - add App/BLE_Gateway/**/*.c]
+│   ├── app_ble.c                 [Modified - integrate Gateway init]
+│   ├── p2p_client_app.c          [Modified - scan callback to manager]
+│   ├── main.c                    [Modified - USB CDC printf redirect]
+│   ├── usbd_cdc_if.c             [Modified - CDC_Receive_FS callback]
+│   └── stm32wbxx_it.c            [Modified - UART interrupt]
+└── CMakeLists.txt                [Modified - add App/BLE_Gateway/**/*.c]
 ```
 
-**Key Points**:
-- ✅ All custom code isolated in `App/BLE_Gateway/`
-- ✅ CubeMX can regenerate Inc/Src without destroying custom code
-- ✅ Clear separation: LPUART1=AT commands, USB CDC=debug printf
-- ✅ Easy to add to CMakeLists: `file(GLOB_RECURSE GATEWAY_SOURCES "App/BLE_Gateway/Src/*.c")`
+**Key Points:**
+- All custom code isolated in `App/BLE_Gateway/`
+- CubeMX can regenerate Inc/Src without destroying custom code
+- Clear separation: LPUART1 for AT commands, USB CDC for debug printf
+- Easy to add to CMakeLists: `file(GLOB_RECURSE GATEWAY_SOURCES "App/BLE_Gateway/Src/*.c")`
 
 ---
 
-## VII. KEY API USAGE EXAMPLES
+## API Usage Examples
 
-### A. Scan Device
+### A. Scan Devices
+
 ```c
 // 1. Enable scan
 hci_le_set_scan_parameters(0x01, 0x0010, 0x0010, 0x01, 0x00);  // Active scan, 10ms interval
@@ -535,7 +764,8 @@ hci_le_set_scan_enable(0x01, 0x00);  // Enable, no duplicate filtering
 hci_le_set_scan_enable(0x00, 0x00);  // Disable scan
 ```
 
-### B. Connect Device
+### B. Connect to Device
+
 ```c
 // AT+CONNECT=AA:BB:CC:DD:EE:FF
 // 1. Find device by MAC
@@ -562,6 +792,7 @@ hci_le_create_connection(
 ```
 
 ### C. Discover Services
+
 ```c
 // After connection established
 aci_gattc_discover_all_services(conn_handle);
@@ -571,6 +802,7 @@ aci_gattc_discover_all_services(conn_handle);
 ```
 
 ### D. Read Characteristic
+
 ```c
 // AT+READ=0,20
 aci_gattc_read_char_value(conn_handle, char_handle);
@@ -581,9 +813,10 @@ aci_gattc_read_char_value(conn_handle, char_handle);
 
 ---
 
-## VIII. ERROR HANDLING
+## Error Handling
 
 ### Common Error Codes
+
 - `0x01` - Unknown HCI Command
 - `0x05` - Authentication Failure
 - `0x0C` - Command Disallowed
@@ -594,6 +827,7 @@ aci_gattc_read_char_value(conn_handle, char_handle);
 - `0x3F` - Connection Terminated by Remote Host
 
 ### Recovery Strategy
+
 1. Log error code
 2. Update device state
 3. Clean up resources
@@ -602,17 +836,20 @@ aci_gattc_read_char_value(conn_handle, char_handle);
 
 ---
 
-## IX. MEMORY CONSIDERATIONS
+## Memory Considerations
 
-### Current Allocation:
-- HeapSize: 0x200 (512 bytes) ❌ **TOO SMALL**
-- StackSize: 0x400 (1KB) ❌ **TOO SMALL**
+### Current Allocation (INSUFFICIENT)
 
-### Recommended:
+- HeapSize: 0x200 (512 bytes) - **TOO SMALL**
+- StackSize: 0x400 (1KB) - **TOO SMALL**
+
+### Recommended Settings
+
 - HeapSize: 0x3000 (12KB) - BLE buffers + device list
-- StackSize: 0x1000 (4KB) - Function calls depth
+- StackSize: 0x1000 (4KB) - Function call depth
 
-### Memory Usage Per Device:
+### Memory Usage Per Device
+
 - Device info: ~50 bytes
 - Services: ~300 bytes
 - Characteristics: ~500 bytes
@@ -621,7 +858,7 @@ aci_gattc_read_char_value(conn_handle, char_handle);
 
 ---
 
-## X. TESTING CHECKLIST
+## Testing Checklist
 
 - [ ] UART interrupt working
 - [ ] AT command parsing OK
@@ -641,9 +878,10 @@ aci_gattc_read_char_value(conn_handle, char_handle);
 
 ---
 
-## XI. THAM CHIẾU API CHI TIẾT
+## Detailed API Reference
 
 ### GAP Commands (Central Role)
+
 ```c
 // Scan control (HCI LE)
 hci_le_set_scan_parameters()
@@ -662,6 +900,7 @@ aci_gap_terminate_proc()
 ```
 
 ### GATT Client Discovery (HCI vs ACI)
+
 ```c
 // Low-level (HCI)
 hci_le_gattc_read_by_type_request()
@@ -675,7 +914,8 @@ aci_gattc_discover_all_chars()
 aci_gattc_discover_all_char_desc()
 ```
 
-### GATT Client R/W
+### GATT Client Read/Write
+
 ```c
 // Read
 aci_gattc_read_char_value(conn_handle, char_handle)
@@ -692,5 +932,5 @@ aci_gattc_write_char_desc()        // Enable CCCD
 
 ---
 
-**Cập nhật cuối**: 13/01/2025  
-**Status**: ✅ Ready for Implementation (Phase 1)
+**Status:** Phase 1 Complete + Optimized  
+**Ready for:** Production Testing

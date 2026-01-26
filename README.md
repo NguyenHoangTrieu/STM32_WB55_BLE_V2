@@ -1,13 +1,13 @@
 # STM32 BLE Gateway - AT Command Interface
 
 **Version**: 1.0  
-**Last Updated**: 20/01/2026  
+**Last Updated**: January 20, 2026  
 **Platform**: STM32WB55 (Cortex-M4 + Cortex-M0+)  
 **Author**: Trieu Nguyen
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 1. [Project Overview](#project-overview)
 2. [Hardware Requirements](#hardware-requirements)
@@ -22,7 +22,7 @@
 
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
 STM32 BLE Gateway is a complete BLE Central firmware for STM32WB55, enabling host MCU/PC to control BLE peripherals through a simple AT command protocol over UART.
 
@@ -44,7 +44,7 @@ STM32 BLE Gateway is a complete BLE Central firmware for STM32WB55, enabling hos
 
 ---
 
-## 🔧 Hardware Requirements
+## Hardware Requirements
 
 ### Required Hardware
 
@@ -67,40 +67,44 @@ STM32 BLE Gateway is a complete BLE Central firmware for STM32WB55, enabling hos
 
 ---
 
-## ✨ Features
+## Features
 
-### Scanning & Discovery
-- ✅ Active scanning with configurable duration
-- ✅ Device name extraction from advertising data
-- ✅ RSSI measurement and tracking
-- ✅ Deduplication (report each device once per scan session)
-- ✅ Support both Public and Random address types
+### Scanning and Discovery
+
+- Active scanning with configurable duration
+- Device name extraction from advertising data
+- RSSI measurement and tracking
+- Deduplication (report each device once per scan session)
+- Support both Public and Random address types
 
 ### Connection Management
-- ✅ Multi-device concurrent connections (max 8)
-- ✅ Automatic connection parameter negotiation
-- ✅ Connection state tracking
-- ✅ Graceful disconnect handling
-- ✅ Link loss detection
+
+- Multi-device concurrent connections (max 8)
+- Automatic connection parameter negotiation
+- Connection state tracking
+- Graceful disconnect handling
+- Link loss detection
 
 ### GATT Client Operations
-- ✅ Service discovery (primary services)
-- ✅ Characteristic discovery
-- ✅ Write with response
-- ✅ Write without response
-- ✅ Read characteristic value
-- ✅ Enable/disable notifications
-- ✅ Enable/disable indications
+
+- Service discovery (primary services)
+- Characteristic discovery
+- Write with response
+- Write without response
+- Read characteristic value
+- Enable/disable notifications
+- Enable/disable indications
 
 ### Communication
-- ✅ **UART**: 921600 baud, 8N1, no flow control
-- ✅ **USB CDC**: Debug logging and system events
-- ✅ Interrupt-driven RX with circular buffer
-- ✅ AT command parsing with timeout protection
+
+- **UART**: 921600 baud, 8N1, no flow control
+- **USB CDC**: Debug logging and system events
+- Interrupt-driven RX with circular buffer
+- AT command parsing with timeout protection
 
 ---
 
-## 📡 Communication Architecture
+## Communication Architecture
 
 ### LPUART1 (921600 baud) - AT Command Interface
 
@@ -134,7 +138,7 @@ STM32 BLE Gateway is a complete BLE Central firmware for STM32WB55, enabling hos
 
 ---
 
-## 📟 AT Command Reference
+## AT Command Reference
 
 ### Command Format
 
@@ -163,7 +167,7 @@ AT+<COMMAND>[=<param1>[,<param2>,...]]<CR><LF>
 
 ---
 
-## 🔍 Scanning & Discovery Commands
+## Scanning and Discovery Commands
 
 ### `AT`
 
@@ -283,7 +287,7 @@ Host → AT+CLEAR
 
 ---
 
-## 🔗 Connection Management Commands
+## Connection Management Commands
 
 ### `AT+CONNECT=<MAC>`
 
@@ -359,7 +363,7 @@ Host → AT+INFO=0
 
 ---
 
-## 📝 GATT Operations Commands
+## GATT Operations Commands
 
 ### `AT+DISC=<idx>`
 
@@ -484,7 +488,7 @@ Host → AT+NOTIFY=0,0x000F,0
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### Step 1: Hardware Setup
 
@@ -552,7 +556,7 @@ Host → AT+NOTIFY=0,0x0007,1
 
 ---
 
-## 🔨 Integration Guide
+## Integration Guide
 
 ### For STM32CubeIDE Projects
 
@@ -584,8 +588,8 @@ Project/
 
 ```cmake
 file(GLOB_RECURSE GATEWAY_SOURCES "App/BLE_Gateway/Src/*.c")
-target_sources($${EXECUTABLE} PRIVATE $${GATEWAY_SOURCES})
-target_include_directories($${EXECUTABLE} PRIVATE App/BLE_Gateway/Inc)
+target_sources(${EXECUTABLE} PRIVATE ${GATEWAY_SOURCES})
+target_include_directories(${EXECUTABLE} PRIVATE App/BLE_Gateway/Inc)
 ```
 
 **3. Add to main.c:**
@@ -658,7 +662,7 @@ void MX_LPUART1_UART_Init(void)
 
 ---
 
-## 💡 Example Workflows
+## Example Workflows
 
 ### Example 1: Heart Rate Monitor
 
@@ -755,7 +759,7 @@ OK
 
 ---
 
-## 🏗️ Module Architecture
+## Module Architecture
 
 ### Software Modules
 
@@ -804,7 +808,7 @@ OK
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Problem: `ERROR` response to all commands
 
@@ -906,8 +910,26 @@ OK
 
 ---
 
+## Configuration Notes
+
+### IPCC Configuration in CubeMX
+
+Remember to configure the IPCC (Inter-Processor Communication Controller) interrupt in CubeMX:
+- Enable IPCC in CubeMX peripherals
+- Configure IPCC interrupts
+- Ensure IPCC is properly initialized before BLE stack operations
+
+### FUS Firmware Startup
+
+Important: The FUS (Firmware Upgrade Service) firmware does not automatically start. You must explicitly start it in your code before BLE operations:
+
+```c
+// Start FUS firmware before BLE initialization
+// This is required for proper BLE stack operation
+```
+
+Ensure the FUS firmware is properly loaded and started before attempting any BLE operations.
+
+---
+
 **End of Documentation**
-
-
-# NHỚ CONFIG IPCC ISR TRONG CUBEMX
-# Start FUS Firmware trong code, nó kg tự start
