@@ -12,6 +12,10 @@
 #include "ble_connection.h"
 #include "ble_gatt_client.h"
 #include "ble_event_handler.h"
+#include "module_system.h"
+#include "module_config.h"
+#include "module_power.h"
+#include "module_mode.h"
 #include "debug_trace.h"
 #include "app_conf.h"
 #include "stm32_seq.h"
@@ -76,12 +80,21 @@ void module_ble_init(void)
 {
     DEBUG_INFO("=== BLE Gateway Initialization ===");
     
-    /* Initialize all modules */
+    /* Initialize system modules first */
+    Module_System_Init();
+    Module_Config_Init();
+    Module_Power_Init();
+    Module_Mode_Init();
+    
+    /* Initialize BLE modules */
     BLE_DeviceManager_Init();
     AT_Command_Init();
     BLE_Connection_Init();
     BLE_GATT_Init();
     BLE_EventHandler_Init();
+
+    /* Apply saved configuration */
+    Module_Config_ApplyRF();
 
     /* Register sequencer task for AT command processing */
     UTIL_SEQ_RegTask(1 << CFG_TASK_AT_CMD_PROC_ID, UTIL_SEQ_RFU, Module_AT_Task);

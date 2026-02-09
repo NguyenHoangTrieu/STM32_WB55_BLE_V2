@@ -11,6 +11,10 @@
 #include "ble_connection.h"
 #include "ble_gatt_client.h"
 #include "debug_trace.h"
+#include "module_system.h"
+#include "module_config.h"
+#include "module_power.h"
+#include "module_mode.h"
 #include "main.h"
 #include "app_conf.h"
 #include "stm32_seq.h"
@@ -466,6 +470,124 @@ void AT_Command_Process(const char *cmd_line)
             AT_Response_Send("ERROR\r\n");
         }
     }
+    /* ============ System/Lifecycle Commands ============ */
+    else if (strcmp(cmd, "AT+RESET") == 0) {
+        AT_RESET_Handler();
+    }
+    else if (strcmp(cmd, "AT+HWRESET") == 0) {
+        AT_HWRESET_Handler();
+    }
+    else if (strcmp(cmd, "AT+FACTORY") == 0) {
+        AT_FACTORY_Handler();
+    }
+    /* ============ Info/Config Commands ============ */
+    else if (strcmp(cmd, "AT+GETINFO") == 0) {
+        AT_GETINFO_Handler();
+    }
+    else if (strncmp(cmd, "AT+NAME=", 8) == 0) {
+        AT_NAME_Handler(&cmd[8]);
+    }
+    else if (strncmp(cmd, "AT+COMM=", 8) == 0) {
+        /* Parse: AT+COMM=<baud>,<parity>,<stop> */
+        const char *p = &cmd[8];
+        uint32_t baud = (uint32_t)ParseUInt16(p);
+        p = SkipToComma(p);
+        if (p != NULL) {
+            uint8_t parity = ParseUInt8(p);
+            p = SkipToComma(p);
+            if (p != NULL) {
+                uint8_t stop = ParseUInt8(p);
+                AT_COMM_Handler(baud, parity, stop);
+            } else {
+                AT_Response_Send("ERROR\r\n");
+            }
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
+    else if (strncmp(cmd, "AT+RF=", 6) == 0) {
+        /* Parse: AT+RF=<tx_power>,<scan_int>,<scan_win> */
+        const char *p = &cmd[6];
+        /* Parse as signed int for tx_power */
+        int8_t tx_power = (int8_t)ParseUInt8(p);
+        p = SkipToComma(p);
+        if (p != NULL) {
+            uint16_t scan_int = ParseUInt16(p);
+            p = SkipToComma(p);
+            if (p != NULL) {
+                uint16_t scan_win = ParseUInt16(p);
+                AT_RF_Handler(tx_power, scan_int, scan_win);
+            } else {
+                AT_Response_Send("ERROR\r\n");
+            }
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
+    else if (strcmp(cmd, "AT+SAVE") == 0) {
+        AT_SAVE_Handler();
+    }
+    /* ============ Mode Commands ============ */
+    else if (strcmp(cmd, "AT+CMDMODE") == 0) {
+        AT_CMDMODE_Handler();
+    }
+    else if (strncmp(cmd, "AT+DATAMODE=", 12) == 0) {
+        /* Parse: AT+DATAMODE=<dev_idx>,<char_handle> */
+        const char *p = &cmd[12];
+        uint8_t idx = ParseUInt8(p);
+        p = SkipToComma(p);
+        if (p != NULL && idx != 0xFFU) {
+            uint16_t handle = ParseUInt16(p);
+            if (handle > 0) {
+                AT_DATAMODE_Handler(idx, handle);
+            } else {
+                AT_Response_Send("ERROR\r\n");
+            }
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
+    /* ============ Status Commands ============ */
+    else if (strncmp(cmd, "AT+STATUS", 9) == 0) {
+        uint8_t idx = 0xFF;  /* Default: all devices */
+        if (cmd[9] == '=' && cmd[10] != '\0') {
+            idx = ParseUInt8(&cmd[10]);
+        }
+        AT_STATUS_Handler(idx);
+    }
+    /* ============ Power Management Commands ============ */
+    else if (strncmp(cmd, "AT+SLEEP", 8) == 0) {
+        /* Parse: AT+SLEEP=<mode>,<wake_mask>,<timeout_ms> */
+        uint8_t mode = 1;  /* Default: sleep mode */
+        uint8_t wake_mask = 0x01;  /* Default: UART wake */
+        uint32_t timeout_ms = 0;  /* Default: no timeout */
+        
+        if (cmd[8] == '=' && cmd[9] != '\0') {
+            const char *p = &cmd[9];
+            mode = ParseUInt8(p);
+            p = SkipToComma(p);
+            if (p != NULL) {
+                wake_mask = ParseUInt8(p);
+                p = SkipToComma(p);
+                if (p != NULL) {
+                    timeout_ms = (uint32_t)ParseUInt16(p);
+                }
+            }
+        }
+        AT_SLEEP_Handler(mode, wake_mask, timeout_ms);
+    }
+    else if (strcmp(cmd, "AT+WAKE") == 0) {
+        AT_WAKE_Handler();
+    }
+    /* ============ Diagnostics Commands ============ */
+    else if (strncmp(cmd, "AT+DIAG=", 8) == 0) {
+        uint8_t idx = ParseUInt8(&cmd[8]);
+        if (idx != 0xFFU) {
+            AT_DIAG_Handler(idx);
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
     else {
         /* Unknown AT command - log but don't spam ERROR */
         DEBUG_WARN("Unknown AT cmd: %s", cmd);
@@ -702,6 +824,299 @@ int AT_INFO_Handler(uint8_t dev_idx)
     AT_Response_Send("+INFO:%02X:%02X:%02X:%02X:%02X:%02X\r\n",
                    dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
                    dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0]);
+    AT_Response_Send("OK\r\n");
+    return 0;
+}
+
+// ==================== System/Lifecycle Handlers ====================
+
+int AT_RESET_Handler(void)
+{
+    DEBUG_WARN("AT+RESET");
+    AT_Response_Send("OK\r\n");
+    
+    /* Software reset after delay */
+    HAL_Delay(100);
+    Module_System_SoftwareReset();
+    
+    /* Never returns */
+    return 0;
+}
+
+int AT_HWRESET_Handler(void)
+{
+    int ret = Module_System_HardwareReset();
+    
+    if (ret == 0) {
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("+ERROR:NOT_SUPPORTED\r\n");
+        return -1;
+    }
+}
+
+int AT_FACTORY_Handler(void)
+{
+    DEBUG_WARN("AT+FACTORY");
+    AT_Response_Send("OK\r\n");
+    
+    /* Factory reset and reboot */
+    HAL_Delay(100);
+    Module_System_FactoryReset();
+    
+    /* Never returns */
+    return 0;
+}
+
+// ==================== Info/Config Handlers ====================
+
+int AT_GETINFO_Handler(void)
+{
+    char version_buf[64];
+    char ble_version_buf[64];
+    uint8_t addr_type;
+    uint8_t bd_addr[6];
+    
+    DEBUG_INFO("AT+GETINFO");
+    
+    /* Get firmware version */
+    Module_System_GetVersion(version_buf, sizeof(version_buf));
+    AT_Response_Send("+FW:%s\r\n", version_buf);
+    
+    /* Get BLE stack version */
+    Module_System_GetBLEVersion(ble_version_buf, sizeof(ble_version_buf));
+    AT_Response_Send("+BLE:%s\r\n", ble_version_buf);
+    
+    /* Get BD address */
+    if (Module_System_GetBDAddr(&addr_type, bd_addr) == 0) {
+        AT_Response_Send("+BDADDR:%02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                       bd_addr[5], bd_addr[4], bd_addr[3],
+                       bd_addr[2], bd_addr[1], bd_addr[0]);
+    }
+    
+    /* Get uptime */
+    uint32_t uptime = Module_System_GetUptime();
+    AT_Response_Send("+UPTIME:%lu ms\r\n", uptime);
+    
+    AT_Response_Send("OK\r\n");
+    return 0;
+}
+
+int AT_NAME_Handler(const char *name)
+{
+    if (name == NULL || name[0] == '\0') {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+    
+    DEBUG_INFO("AT+NAME: %s", name);
+    
+    if (Module_Config_SetDeviceName(name) == 0) {
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+}
+
+int AT_COMM_Handler(uint32_t baud, uint8_t parity, uint8_t stop)
+{
+    UART_Config_t uart_config;
+    
+    DEBUG_INFO("AT+COMM: baud=%lu, parity=%d, stop=%d", baud, parity, stop);
+    
+    uart_config.baud_rate = baud;
+    uart_config.parity = parity;
+    uart_config.stop_bits = stop;
+    uart_config.data_bits = 8;
+    
+    if (Module_Config_SetUART(&uart_config) == 0) {
+        AT_Response_Send("OK\r\n");
+        
+        /* Apply UART changes after response */
+        HAL_Delay(50);
+        Module_Config_ApplyUART();
+        
+        return 0;
+    } else {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+}
+
+int AT_RF_Handler(int8_t tx_power, uint16_t scan_interval, uint16_t scan_window)
+{
+    RF_Config_t rf_config;
+    
+    DEBUG_INFO("AT+RF: tx=%d dBm, scan_int=%d, scan_win=%d", 
+               tx_power, scan_interval, scan_window);
+    
+    rf_config.tx_power_dbm = tx_power;
+    rf_config.scan_interval = scan_interval;
+    rf_config.scan_window = scan_window;
+    rf_config.conn_interval_min = 0x0018;  /* Keep defaults */
+    rf_config.conn_interval_max = 0x0028;
+    
+    if (Module_Config_SetRF(&rf_config) == 0) {
+        /* Apply RF config immediately */
+        Module_Config_ApplyRF();
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+}
+
+int AT_SAVE_Handler(void)
+{
+    DEBUG_INFO("AT+SAVE");
+    
+    if (Module_Config_Save() == 0) {
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+}
+
+// ==================== Mode Handlers ====================
+
+int AT_CMDMODE_Handler(void)
+{
+    DEBUG_INFO("AT+CMDMODE");
+    
+    if (Module_Mode_EnterCommand() == 0) {
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+}
+
+int AT_DATAMODE_Handler(uint8_t dev_idx, uint16_t char_handle)
+{
+    DEBUG_INFO("AT+DATAMODE: dev=%d, handle=0x%04X", dev_idx, char_handle);
+    
+    if (Module_Mode_EnterData(dev_idx, char_handle) == 0) {
+        AT_Response_Send("OK\r\n");
+        return 0;
+    } else {
+        AT_Response_Send("+ERROR:NOT_CONNECTED\r\n");
+        return -1;
+    }
+}
+
+// ==================== Status Handlers ====================
+
+int AT_STATUS_Handler(uint8_t dev_idx)
+{
+    uint8_t i, count;
+    BLE_Device_t *dev;
+    
+    DEBUG_INFO("AT+STATUS: idx=%d", dev_idx);
+    
+    if (dev_idx == 0xFF) {
+        /* Report all devices */
+        count = BLE_DeviceManager_GetCount();
+        AT_Response_Send("+STATUS:%d devices\r\n", (int)count);
+        
+        for (i = 0; i < count; i++) {
+            dev = BLE_DeviceManager_GetDevice((int)i);
+            if (dev != NULL) {
+                AT_Response_Send("+DEV:%d,%s,0x%04X\r\n",
+                    (int)i,
+                    dev->is_connected ? "CONNECTED" : "DISCONNECTED",
+                    dev->conn_handle);
+            }
+        }
+    } else {
+        /* Report specific device */
+        dev = BLE_DeviceManager_GetDevice(dev_idx);
+        if (dev == NULL) {
+            AT_Response_Send("ERROR\r\n");
+            return -1;
+        }
+        
+        AT_Response_Send("+STATUS:%s,0x%04X,RSSI=%d\r\n",
+            dev->is_connected ? "CONNECTED" : "DISCONNECTED",
+            dev->conn_handle,
+            (int)dev->rssi);
+    }
+    
+    AT_Response_Send("OK\r\n");
+    return 0;
+}
+
+// ==================== Power Management Handlers ====================
+
+int AT_SLEEP_Handler(uint8_t mode, uint8_t wake_mask, uint32_t timeout_ms)
+{
+    Power_Mode_t power_mode;
+    
+    DEBUG_INFO("AT+SLEEP: mode=%d, wake=0x%02X, timeout=%lu", 
+               mode, wake_mask, timeout_ms);
+    
+    /* Validate mode */
+    if (mode < 1 || mode > 4) {
+        AT_Response_Send("+ERROR:INVALID_MODE\r\n");
+        return -1;
+    }
+    
+    power_mode = (Power_Mode_t)mode;
+    
+    AT_Response_Send("OK\r\n");
+    HAL_Delay(50);  /* Allow UART transmission to complete */
+    
+    /* Enter sleep */
+    Module_Power_EnterSleep(power_mode, wake_mask, timeout_ms);
+    
+    /* After wake - send wake event */
+    AT_Response_Send("+WAKE\r\n");
+    
+    return 0;
+}
+
+int AT_WAKE_Handler(void)
+{
+    /* Manual wake command (always succeeds in run mode) */
+    DEBUG_INFO("AT+WAKE");
+    AT_Response_Send("OK\r\n");
+    return 0;
+}
+
+// ==================== Diagnostics Handlers ====================
+
+int AT_DIAG_Handler(uint8_t dev_idx)
+{
+    BLE_Device_t *dev;
+    
+    DEBUG_INFO("AT+DIAG: dev=%d", dev_idx);
+    
+    dev = BLE_DeviceManager_GetDevice(dev_idx);
+    if (dev == NULL) {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+    
+    /* Report diagnostics */
+    AT_Response_Send("+DIAG:RSSI=%d dBm\r\n", (int)dev->rssi);
+    
+    if (dev->is_connected) {
+        AT_Response_Send("+DIAG:CONN_HANDLE=0x%04X\r\n", dev->conn_handle);
+        AT_Response_Send("+DIAG:STATUS=CONNECTED\r\n");
+    } else {
+        AT_Response_Send("+DIAG:STATUS=DISCONNECTED\r\n");
+    }
+    
+    /* Add more diagnostic info as needed */
+    const RF_Config_t *rf_config = &(Module_Config_Get()->rf);
+    AT_Response_Send("+DIAG:TX_POWER=%d dBm\r\n", (int)rf_config->tx_power_dbm);
+    
     AT_Response_Send("OK\r\n");
     return 0;
 }

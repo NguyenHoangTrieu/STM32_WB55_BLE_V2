@@ -105,4 +105,100 @@ int AT_DISC_Handler(uint8_t dev_idx);
   */
 int AT_INFO_Handler(uint8_t dev_idx);
 
+/* ============ System/Lifecycle Commands ============ */
+
+/**
+  * @brief Software reset
+  */
+int AT_RESET_Handler(void);
+
+/**
+  * @brief Hardware reset
+  */
+int AT_HWRESET_Handler(void);
+
+/**
+  * @brief Factory reset
+  */
+int AT_FACTORY_Handler(void);
+
+/* ============ Info/Config Commands ============ */
+
+/**
+  * @brief Get module information (version, BLE stack, BD addr)
+  */
+int AT_GETINFO_Handler(void);
+
+/**
+  * @brief Set device name
+  * @param name Device name string
+  */
+int AT_NAME_Handler(const char *name);
+
+/**
+  * @brief Set UART communication parameters
+  * @param baud Baud rate
+  * @param parity Parity (0=None, 1=Even, 2=Odd)
+  * @param stop Stop bits (1 or 2)
+  */
+int AT_COMM_Handler(uint32_t baud, uint8_t parity, uint8_t stop);
+
+/**
+  * @brief Set RF parameters
+  * @param tx_power TX power in dBm
+  * @param scan_interval Scan interval (0.625ms units)
+  * @param scan_window Scan window (0.625ms units)
+  */
+int AT_RF_Handler(int8_t tx_power, uint16_t scan_interval, uint16_t scan_window);
+
+/**
+  * @brief Save configuration to NVM
+  */
+int AT_SAVE_Handler(void);
+
+/* ============ Mode Commands ============ */
+
+/**
+  * @brief Enter command mode
+  */
+int AT_CMDMODE_Handler(void);
+
+/**
+  * @brief Enter data mode (transparent UART<->GATT)
+  * @param dev_idx Device index
+  * @param char_handle Characteristic handle
+  */
+int AT_DATAMODE_Handler(uint8_t dev_idx, uint16_t char_handle);
+
+/* ============ Connection Status Commands ============ */
+
+/**
+  * @brief Get connection status
+  * @param dev_idx Device index (0xFF for all)
+  */
+int AT_STATUS_Handler(uint8_t dev_idx);
+
+/* ============ Power Management Commands ============ */
+
+/**
+  * @brief Enter sleep mode
+  * @param mode Sleep mode (1=Sleep, 2=Stop0, 3=Stop1, 4=Stop2)
+  * @param wake_mask Wake source mask
+  * @param timeout_ms Timeout in milliseconds
+  */
+int AT_SLEEP_Handler(uint8_t mode, uint8_t wake_mask, uint32_t timeout_ms);
+
+/**
+  * @brief Wake from sleep (manual wake command)
+  */
+int AT_WAKE_Handler(void);
+
+/* ============ Diagnostics Commands ============ */
+
+/**
+  * @brief Get diagnostics (RSSI, TX power, connection params)
+  * @param dev_idx Device index
+  */
+int AT_DIAG_Handler(uint8_t dev_idx);
+
 #endif /* AT_COMMAND_H */

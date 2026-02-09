@@ -35,3 +35,4 @@ Release/
 # OS specific
 Thumbs.db
 .Thumbs.db
+.cache/

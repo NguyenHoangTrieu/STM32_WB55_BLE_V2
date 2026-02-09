@@ -1,7 +1,7 @@
 # STM32 BLE Gateway - AT Command Interface
 
-**Version**: 1.0  
-**Last Updated**: January 20, 2026  
+**Version**: 1.1  
+**Last Updated**: February 9, 2026  
 **Platform**: STM32WB55 (Cortex-M4 + Cortex-M0+)  
 **Author**: Trieu Nguyen
 
@@ -14,6 +14,14 @@
 3. [Features](#features)
 4. [Communication Architecture](#communication-architecture)
 5. [AT Command Reference](#at-command-reference)
+   - [Scanning and Discovery Commands](#scanning-and-discovery-commands)
+   - [Connection Management Commands](#connection-management-commands)
+   - [GATT Operations Commands](#gatt-operations-commands)
+   - [System and Lifecycle Commands](#system-and-lifecycle-commands)
+   - [Configuration Commands](#configuration-commands)
+   - [Mode Commands](#mode-commands)
+   - [Status and Diagnostics Commands](#status-and-diagnostics-commands)
+   - [Power Management Commands](#power-management-commands)
 6. [Quick Start Guide](#quick-start-guide)
 7. [Integration Guide](#integration-guide)
 8. [Example Workflows](#example-workflows)
@@ -485,6 +493,405 @@ Host → AT+NOTIFY=0,0x000F,0
 - CCCD handle typically = characteristic handle + 1
 - Notifications arrive asynchronously when data available
 - Can enable notifications for multiple characteristics
+
+---
+
+## System and Lifecycle Commands
+
+### `AT+RESET`
+
+**Function**: Software reset - restart the module
+
+**Parameters**: None
+
+**Response**:
+```
+OK
+```
+
+**Example**:
+```
+Host → AT+RESET
+     ← OK
+     [... module restarts ...]
+```
+
+**Notes**:
+- Module will restart after 100ms delay
+- All connections will be terminated
+- Unsaved configuration changes will be lost
+
+---
+
+### `AT+HWRESET`
+
+**Function**: Hardware reset - reset via hardware mechanism
+
+**Parameters**: None
+
+**Responses**:
+- `OK` - Hardware reset initiated
+- `+ERROR:NOT_SUPPORTED` - Hardware reset not available
+
+**Example**:
+```
+Host → AT+HWRESET
+     ← OK
+```
+
+**Note**: Availability depends on hardware configuration
+
+---
+
+### `AT+FACTORY`
+
+**Function**: Factory reset - restore default settings and restart
+
+**Parameters**: None
+
+**Response**:
+```
+OK
+```
+
+**Example**:
+```
+Host → AT+FACTORY
+     ← OK
+     [... module resets to factory defaults and restarts ...]
+```
+
+**Notes**:
+- All saved configuration will be erased
+- Device list will be cleared
+- Module restarts automatically after reset
+
+---
+
+## Configuration Commands
+
+### `AT+GETINFO`
+
+**Function**: Get module information (firmware version, BLE stack, BD address, uptime)
+
+**Parameters**: None
+
+**Responses**:
+- `+FW:<version>` - Firmware version
+- `+BLE:<version>` - BLE stack version
+- `+BDADDR:<mac>` - Bluetooth device address
+- `+UPTIME:<ms> ms` - Module uptime in milliseconds
+- `OK` - Command complete
+
+**Example**:
+```
+Host → AT+GETINFO
+     ← +FW:1.0.0
+     ← +BLE:STM32WB v1.13.0
+     ← +BDADDR:AA:BB:CC:DD:EE:FF
+     ← +UPTIME:123456 ms
+     ← OK
+```
+
+---
+
+### `AT+NAME=<name>`
+
+**Function**: Set device name
+
+**Parameters**:
+- `name`: Device name string (max length depends on implementation)
+
+**Responses**:
+- `OK` - Name set successfully
+- `ERROR` - Invalid name or operation failed
+
+**Example**:
+```
+Host → AT+NAME=MyGateway
+     ← OK
+```
+
+**Notes**:
+- Use `AT+SAVE` to persist the name across reboots
+- Name change takes effect immediately
+
+---
+
+### `AT+COMM=<baud>,<parity>,<stop>`
+
+**Function**: Set UART communication parameters
+
+**Parameters**:
+- `baud`: Baud rate (e.g., 9600, 115200, 921600)
+- `parity`: Parity setting
+  - `0` = None
+  - `1` = Even
+  - `2` = Odd
+- `stop`: Stop bits (1 or 2)
+
+**Responses**:
+- `OK` - Settings applied
+- `ERROR` - Invalid parameters
+
+**Example**:
+```
+Host → AT+COMM=115200,0,1
+     ← OK
+     [... UART reconfigures to new settings ...]
+```
+
+**Notes**:
+- Settings apply immediately after OK response
+- Host must switch to new settings to continue communication
+- Use `AT+SAVE` to persist settings across reboots
+- Data bits are fixed at 8
+
+---
+
+### `AT+RF=<tx_power>,<scan_interval>,<scan_window>`
+
+**Function**: Set RF parameters (TX power and scan timing)
+
+**Parameters**:
+- `tx_power`: TX power in dBm (range depends on hardware, typically -20 to +6)
+- `scan_interval`: Scan interval in 0.625ms units (e.g., 160 = 100ms)
+- `scan_window`: Scan window in 0.625ms units (must be ≤ scan_interval)
+
+**Responses**:
+- `OK` - RF parameters set successfully
+- `ERROR` - Invalid parameters
+
+**Example**:
+```
+Host → AT+RF=0,160,80
+     ← OK
+```
+
+**Notes**:
+- TX power: 0 dBm (typical)
+- Scan interval: 160 × 0.625ms = 100ms
+- Scan window: 80 × 0.625ms = 50ms
+- Settings apply immediately
+- Use `AT+SAVE` to persist across reboots
+
+---
+
+### `AT+SAVE`
+
+**Function**: Save current configuration to non-volatile memory (NVM)
+
+**Parameters**: None
+
+**Responses**:
+- `OK` - Configuration saved successfully
+- `ERROR` - Save operation failed
+
+**Example**:
+```
+Host → AT+SAVE
+     ← OK
+```
+
+**Notes**:
+- Saves all configuration parameters (name, UART, RF settings)
+- Configuration persists across power cycles and resets
+- Does NOT save device list or connection states
+
+---
+
+## Mode Commands
+
+### `AT+CMDMODE`
+
+**Function**: Enter command mode (exit data mode if active)
+
+**Parameters**: None
+
+**Responses**:
+- `OK` - Entered command mode
+- `ERROR` - Failed to enter command mode
+
+**Example**:
+```
+Host → AT+CMDMODE
+     ← OK
+```
+
+**Notes**:
+- In command mode, all UART data is interpreted as AT commands
+- Use this to exit data mode and return to AT command processing
+
+---
+
+### `AT+DATAMODE=<dev_idx>,<char_handle>`
+
+**Function**: Enter data mode - transparent UART to GATT characteristic bridge
+
+**Parameters**:
+- `dev_idx`: Device index (0-7)
+- `char_handle`: Characteristic handle to write to
+
+**Responses**:
+- `OK` - Entered data mode
+- `+ERROR:NOT_CONNECTED` - Device not connected
+
+**Example**:
+```
+Host → AT+DATAMODE=0,0x000E
+     ← OK
+     [... all subsequent UART data is written to characteristic 0x000E ...]
+```
+
+**Notes**:
+- In data mode, all UART RX data is written to the specified characteristic
+- All notifications from the characteristic are sent to UART TX
+- Exit data mode with escape sequence or `AT+CMDMODE`
+- Device must be connected before entering data mode
+
+---
+
+## Status and Diagnostics Commands
+
+### `AT+STATUS[=<dev_idx>]`
+
+**Function**: Get connection status for device(s)
+
+**Parameters**:
+- `dev_idx`: (Optional) Device index (0-7). If omitted, reports all devices
+
+**Responses**:
+- Without parameter (all devices):
+  - `+STATUS:<count> devices` - Total device count
+  - `+DEV:<idx>,<status>,<conn_handle>` - Status for each device
+- With parameter (specific device):
+  - `+STATUS:<status>,<conn_handle>,RSSI=<rssi>` - Device status
+- `OK` - Command complete
+- `ERROR` - Invalid device index
+
+**Field descriptions**:
+- `status`: `CONNECTED` or `DISCONNECTED`
+- `conn_handle`: Connection handle (hex)
+- `rssi`: Signal strength in dBm
+
+**Example - All devices**:
+```
+Host → AT+STATUS
+     ← +STATUS:3 devices
+     ← +DEV:0,CONNECTED,0x0001
+     ← +DEV:1,DISCONNECTED,0xFFFF
+     ← +DEV:2,CONNECTED,0x0002
+     ← OK
+```
+
+**Example - Specific device**:
+```
+Host → AT+STATUS=0
+     ← +STATUS:CONNECTED,0x0001,RSSI=-65
+     ← OK
+```
+
+---
+
+### `AT+DIAG=<dev_idx>`
+
+**Function**: Get diagnostic information for a device
+
+**Parameters**:
+- `dev_idx`: Device index (0-7)
+
+**Responses**:
+- `+DIAG:RSSI=<rssi> dBm` - Signal strength
+- `+DIAG:CONN_HANDLE=<handle>` - Connection handle (if connected)
+- `+DIAG:STATUS=<status>` - Connection status
+- `+DIAG:TX_POWER=<power> dBm` - Current TX power setting
+- `OK` - Command complete
+- `ERROR` - Invalid device index
+
+**Example**:
+```
+Host → AT+DIAG=0
+     ← +DIAG:RSSI=-65 dBm
+     ← +DIAG:CONN_HANDLE=0x0001
+     ← +DIAG:STATUS=CONNECTED
+     ← +DIAG:TX_POWER=0 dBm
+     ← OK
+```
+
+**Notes**:
+- Useful for debugging connection issues
+- RSSI value updated from last received packet
+- TX power reflects current RF configuration
+
+---
+
+## Power Management Commands
+
+### `AT+SLEEP=<mode>,<wake_mask>,<timeout_ms>`
+
+**Function**: Enter low-power sleep mode
+
+**Parameters**:
+- `mode`: Sleep mode
+  - `1` = Sleep mode (CPU stopped, peripherals active)
+  - `2` = Stop0 mode (lower power, fast wake)
+  - `3` = Stop1 mode (very low power)
+  - `4` = Stop2 mode (ultra-low power)
+- `wake_mask`: Wake source mask (bitfield)
+  - `0x01` = UART wake
+  - `0x02` = GPIO wake
+  - `0x04` = Timer wake
+  - (Combine with OR: e.g., `0x03` = UART or GPIO)
+- `timeout_ms`: Auto-wake timeout in milliseconds (0 = no timeout)
+
+**Responses**:
+- `OK` - Entering sleep mode
+- `+WAKE` - Module has woken up (sent after wake event)
+- `+ERROR:INVALID_MODE` - Invalid sleep mode
+
+**Example - Sleep with UART wake**:
+```
+Host → AT+SLEEP=1,0x01,0
+     ← OK
+     [... module enters sleep ...]
+     [... UART activity wakes module ...]
+     ← +WAKE
+```
+
+**Example - Sleep with timeout**:
+```
+Host → AT+SLEEP=2,0x01,5000
+     ← OK
+     [... module sleeps for 5 seconds ...]
+     ← +WAKE
+```
+
+**Notes**:
+- Module sends `OK` before entering sleep
+- `+WAKE` event sent after waking up
+- All active connections may be lost in deep sleep modes
+- UART transmission completes before sleep entry
+
+---
+
+### `AT+WAKE`
+
+**Function**: Manual wake command (no-op if already awake)
+
+**Parameters**: None
+
+**Response**:
+```
+OK
+```
+
+**Example**:
+```
+Host → AT+WAKE
+     ← OK
+```
+
+**Note**: Always succeeds when module is in run mode
 
 ---
 

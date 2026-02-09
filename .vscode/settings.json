@@ -1,3 +1,20 @@
 {
-    "C_Cpp.errorSquiggles": "disabled"
+    // Clangd Configuration
+    "clangd.arguments": [
+        "--background-index",
+        "--clang-tidy=false",
+        "--completion-style=detailed",
+        "--header-insertion=never",
+        "--log=error"
+    ],
+    // Disable C_Cpp extension to avoid conflicts with clangd
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.configurationWarnings": "disabled",
+    // Editor settings
+    "editor.semanticHighlighting.enabled": true,
+    "editor.inlineSuggest.enabled": true,
+    // Notebook settings
+    "notebook.output.minimalErrorRendering": true
 }
