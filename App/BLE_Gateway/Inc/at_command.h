@@ -100,6 +100,14 @@ int AT_NOTIFY_Handler(uint8_t dev_idx, uint16_t desc_handle, uint8_t enable);
 int AT_DISC_Handler(uint8_t dev_idx);
 
 /**
+  * @brief Discover characteristics
+  * @param dev_idx Device index
+  * @param start_handle Start handle
+  * @param end_handle End handle
+  */
+int AT_CHARS_Handler(uint8_t dev_idx, uint16_t start_handle, uint16_t end_handle);
+
+/**
   * @brief Get device info
   * @param dev_idx Device index
   */

@@ -20,6 +20,9 @@ typedef void (*BLE_GATTCNotificationCallback_t)(uint16_t conn_handle, uint16_t h
 typedef void (*BLE_GATTCReadResponseCallback_t)(uint16_t conn_handle, uint16_t handle,
                                                  const uint8_t *data, uint16_t len);
 typedef void (*BLE_GATTCWriteResponseCallback_t)(uint16_t conn_handle, uint8_t status);
+typedef void (*BLE_GATTCProcCompleteCallback_t)(uint16_t conn_handle, uint8_t error_code);
+typedef void (*BLE_ServiceDiscoveredCallback_t)(uint16_t conn_handle, const uint8_t *data, 
+                                                 uint16_t data_len, uint8_t attr_data_len);
 
 /**
   * @brief Initialize event handler
@@ -56,6 +59,11 @@ void BLE_EventHandler_RegisterReadResponseCallback(BLE_GATTCReadResponseCallback
   */
 void BLE_EventHandler_RegisterWriteResponseCallback(BLE_GATTCWriteResponseCallback_t cb);
 
+/**
+  * @brief Register GATT procedure complete callback
+  */
+void BLE_EventHandler_RegisterGattProcCompleteCallback(BLE_GATTCProcCompleteCallback_t cb);
+
 /* ============ Event Dispatch Functions ============ */
 
 /**
@@ -89,5 +97,22 @@ void BLE_EventHandler_OnReadResponse(uint16_t conn_handle, uint16_t handle,
   * @brief Dispatch write response event
   */
 void BLE_EventHandler_OnWriteResponse(uint16_t conn_handle, uint8_t status);
+
+/**
+  * @brief Dispatch GATT procedure complete event
+  */
+void BLE_EventHandler_OnGattProcComplete(uint16_t conn_handle, uint8_t error_code);
+
+/**
+  * @brief Dispatch service discovered event
+  */
+void BLE_EventHandler_OnServiceDiscovered(uint16_t conn_handle, const uint8_t *data,
+                                           uint16_t data_len, uint8_t attr_data_len);
+
+/**
+  * @brief Dispatch characteristic discovered event
+  */
+void BLE_EventHandler_OnCharacteristicDiscovered(uint16_t conn_handle, const uint8_t *data,
+                                                   uint16_t data_len, uint8_t pair_len);
 
 #endif /* BLE_EVENT_HANDLER_H */

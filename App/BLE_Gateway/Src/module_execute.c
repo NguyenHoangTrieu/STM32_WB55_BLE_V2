@@ -94,7 +94,7 @@ void module_ble_init(void)
     BLE_EventHandler_Init();
 
     /* Apply saved configuration */
-    Module_Config_ApplyRF();
+    // Module_Config_ApplyRF();
 
     /* Register sequencer task for AT command processing */
     UTIL_SEQ_RegTask(1 << CFG_TASK_AT_CMD_PROC_ID, UTIL_SEQ_RFU, Module_AT_Task);

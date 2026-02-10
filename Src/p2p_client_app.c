@@ -249,6 +249,10 @@ static SVCCTL_EvtAckStatus_t Event_Handler(void *Event)
           uint8_t numServ, i, idx;
           uint16_t uuid, handle;
 
+          /* Forward ALL services to BLE Gateway first */
+          BLE_EventHandler_OnServiceDiscovered(pr->Connection_Handle, pr->Attribute_Data_List,
+                                                pr->Data_Length, pr->Attribute_Data_Length);
+
           uint8_t index;
           handle = pr->Connection_Handle;
           index = 0;
@@ -323,6 +327,10 @@ static SVCCTL_EvtAckStatus_t Event_Handler(void *Event)
           aci_att_read_by_type_resp_event_rp0 *pr = (void*)blecore_evt->data;
           uint8_t idx;
           uint16_t uuid, handle;
+
+          /* Forward ALL characteristics to BLE Gateway first */
+          BLE_EventHandler_OnCharacteristicDiscovered(pr->Connection_Handle, pr->Handle_Value_Pair_Data,
+                                                       pr->Data_Length, pr->Handle_Value_Pair_Length);
 
           /* the event data will be
            * 2 bytes start handle
@@ -488,6 +496,9 @@ static SVCCTL_EvtAckStatus_t Event_Handler(void *Event)
           APP_DBG_MSG("\n");
 #endif
 
+          /* Forward to BLE Gateway first */
+          BLE_EventHandler_OnGattProcComplete(pr->Connection_Handle, pr->Error_Code);
+
           uint8_t index;
 
           index = 0;
@@ -498,7 +509,10 @@ static SVCCTL_EvtAckStatus_t Event_Handler(void *Event)
           if(index < BLE_CFG_CLT_MAX_NBR_CB)
           {
 
-            UTIL_SEQ_SetTask( 1<<CFG_TASK_SEARCH_SERVICE_ID, CFG_SCH_PRIO_0);
+            /* DISABLED: AT command layer controls GATT procedures explicitly
+             * Auto-scheduling this task causes hang after AT+DISC command.
+             * Service/characteristic discovery is now triggered manually via AT+DISC and AT+CHARS. */
+            // UTIL_SEQ_SetTask( 1<<CFG_TASK_SEARCH_SERVICE_ID, CFG_SCH_PRIO_0);
 
           }
         }

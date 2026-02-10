@@ -449,6 +449,8 @@ static void APPE_SysEvtReadyProcessing(void * pPayload)
     /**
     * The wireless firmware is running on the CPU2
     */
+    // Start C2 FUS Firmware here (this firmware on Core M0+ dont start automatically)
+    SHCI_C2_FUS_StartWs();
     APP_DBG_MSG(">>== WIRELESS_FW_RUNNING \n");
 
     /* Traces channel initialization */

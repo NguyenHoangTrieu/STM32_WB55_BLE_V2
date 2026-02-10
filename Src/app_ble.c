@@ -561,6 +561,10 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
       handleNotification.ConnectionHandle = BleApplicationContext.BleApplicationContext_legacy.connectionHandle;
       P2PC_APP_Notification(&handleNotification);
 
+      /* DISABLED: Auto GATT discovery blocks AT command processing
+       * User will manually trigger via AT+DISC command instead
+       */
+      /*
       result = aci_gatt_disc_all_primary_services(BleApplicationContext.BleApplicationContext_legacy.connectionHandle);
       if (result == BLE_STATUS_SUCCESS)
       {
@@ -571,6 +575,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
       {
         APP_DBG_MSG("BLE_CTRL_App_Notification(), All services discovery Failed \r\n\r");
       }
+      */
       break; /* HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE */
 
     case HCI_LE_ADVERTISING_REPORT_SUBEVT_CODE:

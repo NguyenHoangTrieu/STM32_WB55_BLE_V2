@@ -75,13 +75,14 @@ static uint32_t Calculate_CRC32(const uint8_t *data, uint32_t len)
  *============================================================================*/
 void Module_Config_Init(void)
 {
+    // __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
     /* Try to load from Flash */
-    if (Module_Config_Load() != 0) {
+    // if (Module_Config_Load() != 0) {
         /* Load failed, use defaults */
         DEBUG_WARN("Config load failed, using defaults");
         memcpy(&current_config, &default_config, sizeof(Module_Config_t));
         config_loaded = 1;
-    }
+    // }
     
     DEBUG_INFO("Config module initialized: %s", current_config.device_name);
 }

@@ -76,6 +76,40 @@ static uint16_t ParseUInt16(const char *str)
 }
 
 /**
+ * @brief Parse hex string (with optional 0x) to uint16_t
+ * @return Parsed value, or 0 if invalid
+ */
+static uint16_t ParseUInt16_Hex(const char *str)
+{
+    uint32_t val = 0;
+    
+    if (str == NULL || *str == '\0') {
+        return 0;
+    }
+    
+    /* Skip 0x or 0X prefix */
+    if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) {
+        str += 2;
+    }
+    
+    while (*str != '\0') {
+        char c = *str;
+        if (c >= '0' && c <= '9') {
+            val = (val << 4) | (c - '0');
+        } else if (c >= 'A' && c <= 'F') {
+            val = (val << 4) | (c - 'A' + 10);
+        } else if (c >= 'a' && c <= 'f') {
+            val = (val << 4) | (c - 'a' + 10);
+        } else {
+            break; /* Stop at non-hex char */
+        }
+        str++;
+    }
+    
+    return (uint16_t)val;
+}
+
+/**
  * @brief Parse unsigned decimal string to uint8_t
  * @return Parsed value, or 0xFF if invalid
  */
@@ -218,16 +252,51 @@ static int ParseMACString(const char *mac_str, uint8_t *mac_bytes)
 }
 
 /*============================================================================
+ * Event Callbacks
+ *============================================================================*/
+
+/* Deferred response tracking */
+static volatile uint8_t gatt_proc_pending = 0;
+static volatile uint8_t gatt_proc_error = 0;
+
+/**
+ * @brief Callback for GATT procedure complete event
+ * @param conn_handle Connection handle
+ * @param error_code 0 = success, non-zero = error
+ * 
+ * CRITICAL: This is called from BLE event context (possibly interrupt)
+ * DO NOT call blocking UART functions here!
+ * Instead, set flag and defer to task context.
+ */
+static void AT_GATT_ProcCompleteCallback(uint16_t conn_handle, uint8_t error_code)
+{
+    DEBUG_PRINT("AT: GATT proc complete - conn=0x%04X, err=0x%02X", conn_handle, error_code);
+    
+    /* Store error code and set pending flag */
+    gatt_proc_error = error_code;
+    gatt_proc_pending = 1;
+    
+    /* Schedule task to send response */
+    UTIL_SEQ_SetTask(1U << CFG_TASK_AT_CMD_PROC_ID, CFG_SCH_PRIO_0);
+}
+
+/*============================================================================
  * AT Command Initialization
  *============================================================================*/
 void AT_Command_Init(void)
 {
+    extern void BLE_EventHandler_RegisterGattProcCompleteCallback(void (*cb)(uint16_t, uint8_t));
+    
     at_line_idx = 0;
     at_cmd_ready = 0;
     at_garbage_count = 0;
     at_rx_tick = 0;
     memset((void*)at_line_buf, 0, sizeof(at_line_buf));
     memset(at_cmd_buf, 0, sizeof(at_cmd_buf));
+    
+    /* Register GATT event callbacks */
+    BLE_EventHandler_RegisterGattProcCompleteCallback(AT_GATT_ProcCompleteCallback);
+    
     DEBUG_INFO("AT Command initialized");
 }
 
@@ -237,6 +306,21 @@ void AT_Command_Init(void)
  *============================================================================*/
 void AT_Command_ReceiveByte(uint8_t byte)
 {
+    /* Check for Data Mode first */
+    if (Module_Mode_GetCurrent() == MODE_DATA) {
+        Module_Mode_ProcessDataByte(byte);
+        
+        /* Check if escape sequence detected (switched back to command mode) */
+        if (Module_Mode_IsEscapeDetected()) {
+             Module_Mode_EnterCommand();
+             /* Clear any partial command buffer */
+             at_line_idx = 0;
+             at_cmd_ready = 0;
+             at_garbage_count = 0;
+        }
+        return;
+    }
+
     /* Increment simple tick counter */
     at_rx_tick++;
     
@@ -288,6 +372,20 @@ void AT_Command_ReceiveByte(uint8_t byte)
  *============================================================================*/
 void AT_Command_ProcessReady(void)
 {
+    /* Check if GATT proc response is pending */
+    if (gatt_proc_pending) {
+        gatt_proc_pending = 0;
+        
+        /* Send final response in task context (safe for UART blocking) */
+        if (gatt_proc_error == 0) {
+            AT_Response_Send("OK\r\n");
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+        return;  /* Don't process AT command this run */
+    }
+    
+    /* Process AT command if ready */
     if (!at_cmd_ready) {
         return;
     }
@@ -407,7 +505,7 @@ void AT_Command_Process(const char *cmd_line)
         uint8_t idx = ParseUInt8(p);
         p = SkipToComma(p);
         if (p != NULL && idx != 0xFFU) {
-            uint16_t handle = ParseUInt16(p);
+            uint16_t handle = ParseUInt16_Hex(p);
             if (handle > 0) {
                 AT_READ_Handler(idx, handle);
             } else {
@@ -418,13 +516,14 @@ void AT_Command_Process(const char *cmd_line)
         }
     }
     else if (strncmp(cmd, "AT+WRITE=", 9) == 0) {
+        /* Parse: AT+WRITE=<idx>,<handle>,<hex_data> */
         const char *p = &cmd[9];
         uint8_t idx = ParseUInt8(p);
         p = SkipToComma(p);
         if (p != NULL && idx != 0xFFU) {
-            uint16_t handle = ParseUInt16(p);
+            uint16_t handle = ParseUInt16_Hex(p);
             p = SkipToComma(p);
-            if (p != NULL && handle > 0 && *p != '\0') {
+            if (p != NULL && handle > 0) {
                 AT_WRITE_Handler(idx, handle, p);
             } else {
                 AT_Response_Send("ERROR\r\n");
@@ -438,7 +537,7 @@ void AT_Command_Process(const char *cmd_line)
         uint8_t idx = ParseUInt8(p);
         p = SkipToComma(p);
         if (p != NULL && idx != 0xFFU) {
-            uint16_t handle = ParseUInt16(p);
+            uint16_t handle = ParseUInt16_Hex(p);
             p = SkipToComma(p);
             if (p != NULL && handle > 0) {
                 uint8_t enable = ParseUInt8(p);
@@ -458,6 +557,44 @@ void AT_Command_Process(const char *cmd_line)
         uint8_t idx = ParseUInt8(&cmd[8]);
         if (idx != 0xFFU) {
             AT_DISC_Handler(idx);
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
+    else if (strncmp(cmd, "AT+CHARS=", 9) == 0) {
+        /* Parse: AT+CHARS=<idx>,<start>,<end> */
+        const char *p = &cmd[9];
+        uint8_t idx = ParseUInt8(p);
+        p = SkipToComma(p);
+        if (p != NULL && idx != 0xFFU) {
+            uint16_t start = ParseUInt16_Hex(p);
+            p = SkipToComma(p);
+            if (p != NULL && start > 0) {
+                uint16_t end = ParseUInt16_Hex(p);
+                if (end > 0) {
+                    AT_CHARS_Handler(idx, start, end);
+                } else {
+                    AT_Response_Send("ERROR\r\n");
+                }
+            } else {
+                AT_Response_Send("ERROR\r\n");
+            }
+        } else {
+            AT_Response_Send("ERROR\r\n");
+        }
+    }
+    else if (strncmp(cmd, "AT+DATAMODE=", 12) == 0) {
+        /* Parse: AT+DATAMODE=<idx>,<handle> */
+        const char *p = &cmd[12];
+        uint8_t idx = ParseUInt8(p);
+        p = SkipToComma(p);
+        if (p != NULL && idx != 0xFFU) {
+            uint16_t handle = ParseUInt16_Hex(p);
+            if (handle > 0) {
+                AT_DATAMODE_Handler(idx, handle);
+            } else {
+                AT_Response_Send("ERROR\r\n");
+            }
         } else {
             AT_Response_Send("ERROR\r\n");
         }
@@ -612,27 +749,30 @@ int AT_SCAN_Handler(uint16_t duration_ms)
     return 0;
 }
 
-int AT_CONNECT_Handler(const char *mac_str)
+int AT_CONNECT_Handler(const char *idx_str)
 {
-    uint8_t mac[6];
-    int dev_idx;
+    uint8_t dev_idx;
+    BLE_Device_t *dev;
     int ret;
     
-    if (ParseMACString(mac_str, mac) != 0) {
+    /* Parse device index */
+    dev_idx = ParseUInt8(idx_str);
+    if (dev_idx == 0xFF) {
         AT_Response_Send("ERROR\r\n");
         return -1;
     }
     
-    /* Device must be discovered first via scan */
-    dev_idx = BLE_DeviceManager_FindDevice(mac);
-    if (dev_idx < 0) {
+    /* Get device from manager */
+    dev = BLE_DeviceManager_GetDevice(dev_idx);
+    if (dev == NULL) {
         AT_Response_Send("+ERROR:NOT_FOUND\r\n");
         return -1;
     }
     
     DEBUG_INFO("AT+CONNECT: device %d", dev_idx);
     
-    ret = BLE_Connection_CreateConnection(mac);
+    /* Create connection using device MAC address */
+    ret = BLE_Connection_CreateConnection(dev->mac_addr);
     if (ret != 0) {
         AT_Response_Send("ERROR\r\n");
         return -1;
@@ -808,6 +948,32 @@ int AT_DISC_Handler(uint8_t dev_idx)
     }
     
     /* OK sent immediately, +SERVICE responses will follow after GATT events */
+    AT_Response_Send("OK\r\n");
+    return 0;
+}
+
+int AT_CHARS_Handler(uint8_t dev_idx, uint16_t start_handle, uint16_t end_handle)
+{
+    BLE_Device_t *dev;
+    int ret;
+    
+    dev = BLE_DeviceManager_GetDevice(dev_idx);
+    if (dev == NULL || !dev->is_connected) {
+        AT_Response_Send("+ERROR:NOT_CONNECTED\r\n");
+        return -1;
+    }
+    
+    DEBUG_INFO("AT+CHARS: dev=%d, start=0x%04X, end=0x%04X", 
+               dev_idx, start_handle, end_handle);
+    
+    /* Start characteristic discovery - results will come async via GATT events */
+    ret = BLE_GATT_DiscoverCharacteristics(dev->conn_handle, start_handle, end_handle);
+    if (ret != 0) {
+        AT_Response_Send("ERROR\r\n");
+        return -1;
+    }
+    
+    /* OK sent immediately, +CHAR responses will follow after GATT events */
     AT_Response_Send("OK\r\n");
     return 0;
 }
