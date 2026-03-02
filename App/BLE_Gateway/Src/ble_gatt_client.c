@@ -129,12 +129,9 @@ int BLE_GATT_EnableNotification(uint16_t conn_handle, uint16_t desc_handle)
     
     DEBUG_INFO("Enabling notification: conn=0x%04X, desc=0x%04X", conn_handle, desc_handle);
     
-    /* Write 0x0001 to CCCD to enable notification
-     * Bit 0 = Notification enable
-     * Bit 1 = Indication enable
-     */
+    /* Write 0x0001 to CCCD to enable notification.*/
     uint8_t cccd_value[2] = {0x01, 0x00};
-    ret = aci_gatt_write_char_desc(conn_handle, desc_handle, 2, cccd_value);
+    ret = aci_gatt_write_char_value(conn_handle, desc_handle, 2, cccd_value);
     
     if (ret != BLE_STATUS_SUCCESS) {
         DEBUG_ERROR("Failed to enable notification: 0x%02X", ret);
@@ -150,9 +147,11 @@ int BLE_GATT_DisableNotification(uint16_t conn_handle, uint16_t desc_handle)
     
     DEBUG_INFO("Disabling notification: conn=0x%04X, desc=0x%04X", conn_handle, desc_handle);
     
-    /* Write 0x0000 to CCCD to disable notification */
+    /* Write 0x0000 to CCCD to disable notification.
+     * See EnableNotification for reason using aci_gatt_write_char_value.
+     */
     uint8_t cccd_value[2] = {0x00, 0x00};
-    ret = aci_gatt_write_char_desc(conn_handle, desc_handle, 2, cccd_value);
+    ret = aci_gatt_write_char_value(conn_handle, desc_handle, 2, cccd_value);
     
     if (ret != BLE_STATUS_SUCCESS) {
         DEBUG_ERROR("Failed to disable notification: 0x%02X", ret);
@@ -168,9 +167,11 @@ int BLE_GATT_EnableIndication(uint16_t conn_handle, uint16_t desc_handle)
     
     DEBUG_INFO("Enabling indication: conn=0x%04X, desc=0x%04X", conn_handle, desc_handle);
     
-    /* Write 0x0002 to CCCD to enable indication */
+    /* Write 0x0002 to CCCD to enable indication.
+     * See EnableNotification for reason using aci_gatt_write_char_value.
+     */
     uint8_t cccd_value[2] = {0x02, 0x00};
-    ret = aci_gatt_write_char_desc(conn_handle, desc_handle, 2, cccd_value);
+    ret = aci_gatt_write_char_value(conn_handle, desc_handle, 2, cccd_value);
     
     if (ret != BLE_STATUS_SUCCESS) {
         DEBUG_ERROR("Failed to enable indication: 0x%02X", ret);

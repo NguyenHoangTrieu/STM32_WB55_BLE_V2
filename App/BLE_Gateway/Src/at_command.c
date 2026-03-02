@@ -10,6 +10,7 @@
 #include "ble_device_manager.h"
 #include "ble_connection.h"
 #include "ble_gatt_client.h"
+#include "ble_hci_le.h"
 #include "debug_trace.h"
 #include "module_system.h"
 #include "module_config.h"
@@ -258,12 +259,16 @@ static int ParseMACString(const char *mac_str, uint8_t *mac_bytes)
 /* Deferred response tracking */
 static volatile uint8_t gatt_proc_pending = 0;
 static volatile uint8_t gatt_proc_error = 0;
+static volatile uint8_t gatt_resp_expected = 0;
+
+static volatile uint8_t  disconnect_pending_idx  = 0xFFU;
+static volatile uint16_t disconnect_pending_hdl  = 0xFFFFU;
 
 /**
  * @brief Callback for GATT procedure complete event
  * @param conn_handle Connection handle
  * @param error_code 0 = success, non-zero = error
- * 
+ *
  * CRITICAL: This is called from BLE event context (possibly interrupt)
  * DO NOT call blocking UART functions here!
  * Instead, set flag and defer to task context.
@@ -271,12 +276,26 @@ static volatile uint8_t gatt_proc_error = 0;
 static void AT_GATT_ProcCompleteCallback(uint16_t conn_handle, uint8_t error_code)
 {
     DEBUG_PRINT("AT: GATT proc complete - conn=0x%04X, err=0x%02X", conn_handle, error_code);
-    
+
+    /* Only handle if an AT command is actually waiting for this response.
+     * DISC/CHARS send OK immediately and use async events for results,
+     * so they do NOT set gatt_resp_expected. */
+    if (!gatt_resp_expected) {
+        DEBUG_PRINT("AT: GATT proc complete ignored (no pending AT cmd)");
+        /* Still need to check deferred disconnect even if no AT cmd expected */
+        if (disconnect_pending_idx != 0xFFU) {
+            /* GATT is now done - schedule task to execute the deferred disconnect */
+            UTIL_SEQ_SetTask(1U << CFG_TASK_AT_CMD_PROC_ID, CFG_SCH_PRIO_0);
+        }
+        return;
+    }
+
     /* Store error code and set pending flag */
     gatt_proc_error = error_code;
     gatt_proc_pending = 1;
-    
-    /* Schedule task to send response */
+    gatt_resp_expected = 0;
+
+    /* Schedule task to send GATT response (and handle deferred disconnect) */
     UTIL_SEQ_SetTask(1U << CFG_TASK_AT_CMD_PROC_ID, CFG_SCH_PRIO_0);
 }
 
@@ -286,17 +305,26 @@ static void AT_GATT_ProcCompleteCallback(uint16_t conn_handle, uint8_t error_cod
 void AT_Command_Init(void)
 {
     extern void BLE_EventHandler_RegisterGattProcCompleteCallback(void (*cb)(uint16_t, uint8_t));
-    
+
     at_line_idx = 0;
     at_cmd_ready = 0;
     at_garbage_count = 0;
     at_rx_tick = 0;
     memset((void*)at_line_buf, 0, sizeof(at_line_buf));
     memset(at_cmd_buf, 0, sizeof(at_cmd_buf));
-    
+
+    /* Reset GATT and disconnect pending state.
+     * Must be explicit because these are static variables that survive
+     * across AT_Command_Init calls (e.g. module soft-reset sequences). */
+    gatt_proc_pending    = 0;
+    gatt_proc_error      = 0;
+    gatt_resp_expected   = 0;
+    disconnect_pending_idx = 0xFFU;
+    disconnect_pending_hdl = 0xFFFFU;
+
     /* Register GATT event callbacks */
     BLE_EventHandler_RegisterGattProcCompleteCallback(AT_GATT_ProcCompleteCallback);
-    
+
     DEBUG_INFO("AT Command initialized");
 }
 
@@ -372,31 +400,50 @@ void AT_Command_ReceiveByte(uint8_t byte)
  *============================================================================*/
 void AT_Command_ProcessReady(void)
 {
-    /* Check if GATT proc response is pending */
+    /* Handle deferred GATT proc response if pending.*/
     if (gatt_proc_pending) {
         gatt_proc_pending = 0;
-        
+
         /* Send final response in task context (safe for UART blocking) */
         if (gatt_proc_error == 0) {
             AT_Response_Send("OK\r\n");
         } else {
             AT_Response_Send("ERROR\r\n");
         }
-        return;  /* Don't process AT command this run */
+        /* Fall through: also check deferred disconnect and at_cmd_ready below */
     }
     
+    if (disconnect_pending_idx != 0xFFU && !gatt_resp_expected) {
+        uint16_t hdl = disconnect_pending_hdl;
+        tBleStatus dc_ret;
+
+        disconnect_pending_idx = 0xFFU;
+        disconnect_pending_hdl = 0xFFFFU;
+
+        dc_ret = hci_disconnect(hdl, 0x13U);
+        if (dc_ret == BLE_STATUS_SUCCESS) {
+            DEBUG_INFO("Deferred disconnect OK: 0x%04X", hdl);
+            /* +DISCONNECTED arrives later via HCI disconnection complete event */
+        } else {
+            DEBUG_INFO("Deferred disconnect 0x%02X - HCI event pending", dc_ret);
+        }
+        /* Send AT response for the pending AT+DISCONNECT command */
+        AT_Response_Send("OK\r\n");
+        return;
+    }
+
     /* Process AT command if ready */
     if (!at_cmd_ready) {
         return;
     }
-    
+
     /* Critical section: copy buffer then reset ISR state */
     __disable_irq();
     memcpy(at_cmd_buf, (const void*)at_line_buf, at_line_idx + 1);
     at_line_idx = 0;
     at_cmd_ready = 0;
     __enable_irq();
-    
+
     /* Process command outside critical section */
     AT_Command_Process(at_cmd_buf);
 }
@@ -787,25 +834,35 @@ int AT_DISCONNECT_Handler(uint8_t dev_idx)
 {
     BLE_Device_t *dev;
     int ret;
-    
+
     dev = BLE_DeviceManager_GetDevice(dev_idx);
     if (dev == NULL || !dev->is_connected) {
         AT_Response_Send("+ERROR:NOT_CONNECTED\r\n");
         return -1;
     }
-    
+
     DEBUG_INFO("AT+DISCONNECT: device %d, hdl=0x%04X", dev_idx, dev->conn_handle);
-    
+    if (gatt_resp_expected) {
+        DEBUG_INFO("GATT pending - deferring disconnect for dev %d", dev_idx);
+        disconnect_pending_idx = dev_idx;
+        disconnect_pending_hdl = dev->conn_handle;
+        /* No OK yet - ProcessReady will send OK when disconnect fires */
+        return 0;
+    }
+
+    /* No GATT pending - disconnect immediately */
     ret = BLE_Connection_TerminateConnection(dev->conn_handle);
     if (ret != 0) {
-        AT_Response_Send("ERROR\r\n");
-        return -1;
+        /* hci_disconnect failed - state already force-cleared in TerminateConnection */
+        AT_Response_Send("OK\r\n");
+        return 0;
     }
-    
-    /* OK sent immediately, +DISCONNECTED will follow after HCI event */
+
+    /* OK sent immediately; +DISCONNECTED will follow after HCI disconnection event */
     AT_Response_Send("OK\r\n");
     return 0;
 }
+
 
 int AT_LIST_Handler(void)
 {
@@ -887,15 +944,16 @@ int AT_WRITE_Handler(uint8_t dev_idx, uint16_t char_handle, const char *data)
     }
     
     DEBUG_INFO("AT+WRITE: dev=%d, handle=0x%04X, len=%d", dev_idx, char_handle, data_len);
-    
+
+    gatt_resp_expected = 1;
     ret = BLE_GATT_WriteCharacteristic(dev->conn_handle, char_handle, write_buf, (uint16_t)data_len);
     if (ret != 0) {
+        gatt_resp_expected = 0;  /* Cancel wait - ACI call failed immediately */
         AT_Response_Send("ERROR\r\n");
         return -1;
     }
-    
-    /* OK sent immediately, +WRITE response will follow after GATT proc complete */
-    AT_Response_Send("OK\r\n");
+
+    /* No immediate response - wait for GATT proc complete event */
     return 0;
 }
 
@@ -911,18 +969,16 @@ int AT_NOTIFY_Handler(uint8_t dev_idx, uint16_t desc_handle, uint8_t enable)
     }
     
     DEBUG_INFO("AT+NOTIFY: dev=%d, handle=0x%04X, enable=%d", dev_idx, desc_handle, enable);
-    
-    if (enable) {
-        ret = BLE_GATT_EnableNotification(dev->conn_handle, desc_handle);
-    } else {
-        ret = BLE_GATT_DisableNotification(dev->conn_handle, desc_handle);
-    }
-    
+    uint8_t cccd_val[2];
+    cccd_val[0] = enable ? 0x01U : 0x00U;
+    cccd_val[1] = 0x00U;
+    ret = BLE_GATT_WriteCharacteristicNoResp(dev->conn_handle, desc_handle, cccd_val, 2U);
+
     if (ret != 0) {
         AT_Response_Send("ERROR\r\n");
         return -1;
     }
-    
+
     AT_Response_Send("OK\r\n");
     return 0;
 }
