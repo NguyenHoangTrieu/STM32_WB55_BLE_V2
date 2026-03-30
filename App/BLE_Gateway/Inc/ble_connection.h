@@ -54,6 +54,14 @@ int BLE_Connection_CreateConnection(const uint8_t *mac);
 int BLE_Connection_TerminateConnection(uint16_t conn_handle);
 
 /**
+  * @brief Execute deferred disconnect retry (call from task context, NOT ISR).
+  *        Called by AT_Command_ProcessReady() when disc_retry_pending flag is set
+  *        by the HW_TS timer callback.
+  * @return 1 if a retry was processed (caller should return), 0 if nothing to do.
+  */
+int BLE_Connection_ProcessRetry(void);
+
+/**
   * @brief Set connection state
   */
 void BLE_Connection_SetState(uint16_t conn_handle, BLE_ConnectionState_t state);
@@ -74,8 +82,9 @@ uint8_t BLE_Connection_IsConnected(uint16_t conn_handle);
   * @param rssi RSSI value
   * @param name Device name (if available)
   * @param addr_type Address type
+  * @param event_type BLE advertising event type (0x00=ADV_IND, 0x03=ADV_NONCONN_IND, etc.)
   */
-void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type);
+void BLE_Connection_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type, uint8_t event_type);
 
 /**
   * @brief Callback when connection established

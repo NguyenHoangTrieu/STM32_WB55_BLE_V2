@@ -328,6 +328,15 @@ void AT_Command_Init(void)
     DEBUG_INFO("AT Command initialized");
 }
 
+/* Called from ble_connection.c DiscRetry_Callback (ISR) to wake the AT task.
+ * Safe to call from interrupt context — UTIL_SEQ_SetTask is IRQ-safe.
+ * NO printf/DEBUG_INFO here — called from RTC wakeup ISR, HAL_UART_Transmit
+ * would deadlock if SysTick cannot preempt this IRQ. */
+void AT_ScheduleTask(void)
+{
+    UTIL_SEQ_SetTask(1U << CFG_TASK_AT_CMD_PROC_ID, CFG_SCH_PRIO_0);
+}
+
 /*============================================================================
  * ISR Byte Receive Handler
  * Called from LPUART1_IRQHandler - must be fast, no blocking!
@@ -400,8 +409,28 @@ void AT_Command_ReceiveByte(uint8_t byte)
  *============================================================================*/
 void AT_Command_ProcessReady(void)
 {
+    DEBUG_INFO("[AT_ProcessReady] ===== TASK ENTRY ===== at_cmd_ready=%u gatt_pending=%u",
+               (unsigned)at_cmd_ready,
+               (unsigned)gatt_proc_pending);
+    
+    /* Polling-based fallback: if RTC ISR hasn't fired yet, check manually */
+    extern void DiscRetry_PollCheck(void);
+    DiscRetry_PollCheck();
+    
+    /* ── Disconnect retry (highest priority) ──────────────────────────────────
+     * DiscRetry_Callback() fires from RTC ISR and cannot call hci_disconnect.
+     * It sets disc_retry_pending and schedules this task.  Execute the retry
+     * here where IPCC / HCI is safe to use. */
+    if (BLE_Connection_ProcessRetry()) {
+        DEBUG_INFO("AT task: disconnect retry path executed - early return");
+        DEBUG_INFO("[AT_ProcessReady] EXIT: retry processed, sequencer will re-enter next cycle");
+        return;  /* retry was handled; re-enter next cycle for any queued cmd */
+    }
+    DEBUG_INFO("[AT_ProcessReady] No retry pending, continuing to other checks");
+
     /* Handle deferred GATT proc response if pending.*/
     if (gatt_proc_pending) {
+        DEBUG_INFO("[AT_ProcessReady] GATT response pending, sending result");
         gatt_proc_pending = 0;
 
         /* Send final response in task context (safe for UART blocking) */
@@ -414,6 +443,7 @@ void AT_Command_ProcessReady(void)
     }
     
     if (disconnect_pending_idx != 0xFFU && !gatt_resp_expected) {
+        DEBUG_INFO("[AT_ProcessReady] Deferred disconnect pending");
         uint16_t hdl = disconnect_pending_hdl;
         tBleStatus dc_ret;
 
@@ -429,14 +459,18 @@ void AT_Command_ProcessReady(void)
         }
         /* Send AT response for the pending AT+DISCONNECT command */
         AT_Response_Send("OK\r\n");
+        /* Note: Do NOT reschedule here - let UART ISR schedule task when new input arrives */
         return;
     }
 
     /* Process AT command if ready */
     if (!at_cmd_ready) {
+        DEBUG_INFO("[AT_ProcessReady] EXIT: no at_cmd_ready, returning to sequencer");
         return;
     }
 
+    DEBUG_INFO("[AT_ProcessReady] AT command ready, processing");
+    DEBUG_INFO("[AT_ProcessReady] *** System is ALIVE and responsive ***");
     /* Critical section: copy buffer then reset ISR state */
     __disable_irq();
     memcpy(at_cmd_buf, (const void*)at_line_buf, at_line_idx + 1);
@@ -445,7 +479,10 @@ void AT_Command_ProcessReady(void)
     __enable_irq();
 
     /* Process command outside critical section */
+    DEBUG_INFO("[AT_ProcessReady] Calling AT_Command_Process");
     AT_Command_Process(at_cmd_buf);
+    DEBUG_INFO("[AT_ProcessReady] *** At_Command_Process RETURNED - still alive ***");
+    DEBUG_INFO("[AT_ProcessReady] AT_Command_Process returned, task will exit");
 }
 
 /*============================================================================
@@ -456,6 +493,7 @@ void AT_Response_Send(const char *fmt, ...)
     static char response_buf[AT_CMD_MAX_LEN];
     va_list args;
     uint16_t len;
+    HAL_StatusTypeDef uart_ret;
     
     va_start(args, fmt);
     len = (uint16_t)vsnprintf(response_buf, AT_CMD_MAX_LEN, fmt, args);
@@ -465,8 +503,16 @@ void AT_Response_Send(const char *fmt, ...)
         len = AT_CMD_MAX_LEN;
     }
     
-    /* Send via UART - blocking */
-    HAL_UART_Transmit(&hlpuart1, (uint8_t *)response_buf, len, 100);
+    /* Send via UART - SHORT timeout to avoid blocking */
+    DEBUG_INFO("[UART_TX] Attempting transmit %u bytes", len);
+    uart_ret = HAL_UART_Transmit(&hlpuart1, (uint8_t *)response_buf, len, 50);
+    if (uart_ret == HAL_OK) {
+        DEBUG_INFO("[UART_TX] Transmit OK");
+    } else if (uart_ret == HAL_TIMEOUT) {
+        DEBUG_ERROR("[UART_TX] TIMEOUT - UART stuck!");
+    } else {
+        DEBUG_ERROR("[UART_TX] ERROR - status=%u", (unsigned)uart_ret);
+    }
 }
 
 /*============================================================================
@@ -815,6 +861,14 @@ int AT_CONNECT_Handler(const char *idx_str)
         AT_Response_Send("+ERROR:NOT_FOUND\r\n");
         return -1;
     }
+
+    /* Reject connection attempt to non-connectable devices.
+     * Non-connectable devices (ADV_NONCONN_IND/SCAN_RSP) will never
+     * respond to a connection request, causing a permanent hang. */
+    if (!dev->is_connectable) {
+        AT_Response_Send("+ERROR:NOT_CONNECTABLE\r\n");
+        return -1;
+    }
     
     DEBUG_INFO("AT+CONNECT: device %d", dev_idx);
     
@@ -851,15 +905,21 @@ int AT_DISCONNECT_Handler(uint8_t dev_idx)
     }
 
     /* No GATT pending - disconnect immediately */
+    DEBUG_INFO("[AT_DISCONNECT] Before TerminateConnection: hdl=0x%04X", dev->conn_handle);
     ret = BLE_Connection_TerminateConnection(dev->conn_handle);
+    DEBUG_INFO("[AT_DISCONNECT] After TerminateConnection: ret=%d", ret);
     if (ret != 0) {
         /* hci_disconnect failed - state already force-cleared in TerminateConnection */
+        DEBUG_INFO("[AT_DISCONNECT] Sending OK (error case)");
         AT_Response_Send("OK\r\n");
+        DEBUG_INFO("[AT_DISCONNECT] OK sent (error case)");
         return 0;
     }
 
     /* OK sent immediately; +DISCONNECTED will follow after HCI disconnection event */
+    DEBUG_INFO("[AT_DISCONNECT] Sending OK (retry case)");
     AT_Response_Send("OK\r\n");
+    DEBUG_INFO("[AT_DISCONNECT] OK sent (retry case) - waiting for callback in ~200ms");
     return 0;
 }
 
@@ -877,12 +937,12 @@ int AT_LIST_Handler(void)
     for (i = 0; i < count; i++) {
         dev = BLE_DeviceManager_GetDevice((int)i);
         if (dev != NULL) {
-            AT_Response_Send("+DEV:%d,%02X:%02X:%02X:%02X:%02X:%02X,%d,0x%04X,%s\r\n",
+            AT_Response_Send("+DEV:%d,%02X:%02X:%02X:%02X:%02X:%02X,%d,0x%02X,%s\r\n",
                 (int)i,
                 dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
                 dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0],
                 (int)dev->rssi,
-                dev->conn_handle,
+                dev->event_type,
                 (dev->name[0] != '\0') ? dev->name : "Unknown");
         }
     }
@@ -945,15 +1005,15 @@ int AT_WRITE_Handler(uint8_t dev_idx, uint16_t char_handle, const char *data)
     
     DEBUG_INFO("AT+WRITE: dev=%d, handle=0x%04X, len=%d", dev_idx, char_handle, data_len);
 
-    gatt_resp_expected = 1;
+    gatt_resp_expected = 0; /* Do not block waiting for GATT proc */
     ret = BLE_GATT_WriteCharacteristic(dev->conn_handle, char_handle, write_buf, (uint16_t)data_len);
     if (ret != 0) {
-        gatt_resp_expected = 0;  /* Cancel wait - ACI call failed immediately */
         AT_Response_Send("ERROR\r\n");
         return -1;
     }
 
-    /* No immediate response - wait for GATT proc complete event */
+    /* Send OK immediately to prevent timeout on the ESP32 Gateway */
+    AT_Response_Send("OK\r\n");
     return 0;
 }
 

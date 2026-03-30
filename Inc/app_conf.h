@@ -532,7 +532,8 @@ typedef enum
 {
   CFG_TIM_PROC_ID_ISR,
   /* USER CODE BEGIN CFG_TimProcID_t */
-
+  CFG_TIM_CONN_TIMEOUT_ID,
+  CFG_TIM_DISCONNECT_RETRY_ID,      /* Non-blocking retry for hci_disconnect BUSY */
   /* USER CODE END CFG_TimProcID_t */
 } CFG_TimProcID_t;
 

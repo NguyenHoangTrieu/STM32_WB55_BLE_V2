@@ -22,7 +22,9 @@ typedef struct {
     uint8_t   is_connected;             // Connection status
     int8_t    rssi;                     // Last RSSI value
     uint8_t   device_index;             // Index in list
-    uint8_t addr_type;                  // Address type
+    uint8_t   addr_type;                // Address type
+    uint8_t   is_connectable;           // 1 = ADV_IND/ADV_DIRECT_IND, 0 = non-connectable
+    uint8_t   event_type;               // BLE advertisement event type (0x00=ADV_IND, 0x03=ADV_NONCONN_IND, etc.)
     char name[BLE_DEVICE_NAME_MAX_LEN];
     uint8_t reported_in_scan;
 } BLE_Device_t;

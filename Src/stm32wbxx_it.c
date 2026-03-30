@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "at_command.h"
+#include "hw_if.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -334,6 +335,18 @@ void HSEM_IRQHandler(void)
   /* USER CODE BEGIN HSEM_IRQn 1 */
 
   /* USER CODE END HSEM_IRQn 1 */
+}
+
+/**
+  * @brief This function handles RTC wakeup-timer interrupt.
+  *        Routes to HW_TS timer server which manages all app timers
+  *        (conn timeout, disconnect retry, etc.) via the RTC wakeup peripheral.
+  *        hw_if.h documents: "shall be called by the application in the RTC
+  *        interrupt handler".
+  */
+void RTC_WKUP_IRQHandler(void)
+{
+  HW_TS_RTC_Wakeup_Handler();
 }
 
 /* USER CODE BEGIN 1 */

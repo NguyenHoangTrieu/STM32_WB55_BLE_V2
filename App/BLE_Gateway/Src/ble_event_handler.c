@@ -66,11 +66,11 @@ void BLE_EventHandler_RegisterGattProcCompleteCallback(BLE_GATTCProcCompleteCall
     proc_complete_cb = cb;
 }
 
-void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type)
+void BLE_EventHandler_OnScanReport(const uint8_t *mac, int8_t rssi, const char *name, uint8_t addr_type, uint8_t event_type)
 {
-    DEBUG_PRINT("Event: Scan Report - RSSI=%d", rssi);
+    DEBUG_PRINT("Event: Scan Report - RSSI=%d, evt_type=%d", rssi, event_type);
     if (scan_cb) {
-        scan_cb(mac, rssi, name, addr_type);
+        scan_cb(mac, rssi, name, addr_type, event_type);
     }
 }
 
@@ -173,15 +173,14 @@ void BLE_EventHandler_OnCharacteristicDiscovered(uint16_t conn_handle, const uin
     DEBUG_PRINT("Event: Char Discovered - conn=0x%04X, data_len=%d, pair_len=%d",
                 conn_handle, data_len, pair_len);
     
-    /* Need at least 1 byte for length + actual data */
-    if (data_len < 2 || pair_len < 5) {
+    /* Need at least pair_len bytes */
+    if (data_len < pair_len || pair_len < 5) {
         DEBUG_PRINT("Invalid char discovery data");
         return;
     }
     
-    /* Adjust data_len (first byte is length, ignore it) */
-    uint16_t actual_len = data_len - 1;
-    uint8_t num_chars = actual_len / pair_len;
+    /* Calculate number of characteristics in this packet */
+    uint8_t num_chars = data_len / pair_len;
     uint8_t i;
     
     for (i = 0; i < num_chars; i++) {

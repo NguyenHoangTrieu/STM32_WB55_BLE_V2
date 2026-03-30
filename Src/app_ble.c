@@ -551,6 +551,10 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
         /* Forward to BLE Gateway */
         hci_le_connection_complete_event_rp0 *conn_evt = (hci_le_connection_complete_event_rp0 *)meta_evt->data;
         BLE_Connection_OnConnected(conn_evt->Peer_Address, conn_evt->Connection_Handle, conn_evt->Status);
+        /* Skip legacy P2P state update on failed connection to avoid state corruption */
+        if (conn_evt->Status != 0) {
+          break;
+        }
       }
       /* USER CODE END EVT_LE_CONN_COMPLETE */
       /**
@@ -627,12 +631,14 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void *pckt)
         i += (length + 1);
       }
 
-      /* Forward to BLE Gateway with all parameters */
+      /* Forward to BLE Gateway with all parameters including event_type
+       * so connectable vs non-connectable devices can be distinguished */
       BLE_Connection_OnScanReport(
           le_advertising_event->Advertising_Report[0].Address,
           rssi,
           name_found ? device_name : NULL,
-          addr_type);
+          addr_type,
+          event_type);
       /* USER CODE END EVT_LE_ADVERTISING_REPORT */
 
       /* Rest of original code for P2P server detection */

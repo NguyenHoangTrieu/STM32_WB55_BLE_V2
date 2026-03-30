@@ -56,6 +56,7 @@ int BLE_DeviceManager_AddDevice(const uint8_t *mac, int8_t rssi)
         device_manager.devices[idx].rssi = rssi;
         device_manager.devices[idx].is_connected = 0;
         device_manager.devices[idx].conn_handle = 0xFFFF;
+        device_manager.devices[idx].is_connectable = 0;
         device_manager.devices[idx].name[0] = '\0';
         device_manager.devices[idx].reported_in_scan = 0;
         device_manager.device_count++;
